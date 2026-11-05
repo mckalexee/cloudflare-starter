@@ -1,0 +1,122 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true,
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
+  },
+  "plugins": [
+    // @starter:web
+    "react",
+    "jsx-a11y",
+    // @starter:end
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "promise",
+    "vitest"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "rules": {
+    // @starter:web
+    // The automatic JSX runtime (`jsx: react-jsx`) imports React for you.
+    "react/react-in-jsx-scope": "off",
+    // @starter:end
+    // @starter:mcp
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "agents/mcp",
+            "importNames": ["McpAgent"],
+            "message": "McpAgent is deprecated. Use createMcpHandler from agents/mcp/server."
+          }
+        ]
+      }
+    ],
+    // @starter:end
+    "eqeqeq": "error",
+    "no-console": "error",
+    "import/no-cycle": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/switch-exhaustiveness-check": "error"
+  },
+  "overrides": [
+    // @starter:mcp
+    {
+      "files": ["src/mcp/**", "src/auth/**"],
+      "rules": {
+        // The McpAgent ban repeats here because an override replaces the root rule's options.
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "agents/mcp",
+                "importNames": ["McpAgent"],
+                "message": "McpAgent is deprecated. Use createMcpHandler from agents/mcp/server."
+              },
+              {
+                "name": "react",
+                "message": "MCP and auth code must not depend on the web app. Keep React in src/web."
+              },
+              {
+                "name": "react-dom",
+                "message": "MCP and auth code must not depend on the web app. Keep React DOM in src/web."
+              },
+              {
+                "name": "react-router",
+                "message": "MCP and auth code must not depend on the web app. Keep React Router in src/web."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "#web/*",
+                  "**/web/**",
+                  "react/*",
+                  "react-dom/*",
+                  "react-router/*",
+                  "@react-router/**"
+                ],
+                "message": "MCP and auth code must not import src/web or its frameworks, so the web half can be pruned."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    // @starter:end
+    {
+      "files": ["src/lib/log.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      // Scripts run in Node and report their progress on the console.
+      "files": ["scripts/**"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["test/**"],
+      "rules": {
+        "typescript/no-non-null-assertion": "off"
+      }
+    }
+  ]
+}

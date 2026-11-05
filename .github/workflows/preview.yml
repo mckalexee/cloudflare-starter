@@ -1,0 +1,179 @@
+# Deploys a Worker Preview named `pr-<number>` for each pull request, checks that it serves
+# traffic, and comments its URL on the pull request. Closing the pull request deletes the Preview.
+#
+# Needs:
+# - Variable `DEPLOY_ENABLED` set to `true`. Until then both jobs are skipped.
+# - Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, in the repository or in the
+#   `preview` environment.
+# - Optional secrets `PREVIEW_GITHUB_CLIENT_ID`, `PREVIEW_GITHUB_CLIENT_SECRET`, and
+#   `PREVIEW_COOKIE_SECRET`. The job passes each one that's set to the Preview as the Worker
+#   secret of the same name without the `PREVIEW_` prefix. GitHub reserves the `GITHUB_` prefix
+#   for its own secrets, so the names can't match the Worker's. A secret you leave unset comes
+#   from the Preview base config (`wrangler preview base-config secret put`), or from the previous
+#   deployment of the same Preview.
+#
+# Pull requests from forks never get a Preview, because their runs can't read secrets.
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+# A new push cancels the deploy in flight for the same pull request. A close event doesn't cancel,
+# so cleanup waits for a running deploy to finish and then deletes what it created.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  deploy:
+    name: Deploy the Preview
+    if: >-
+      github.event.action != 'closed' &&
+      vars.DEPLOY_ENABLED == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: preview
+    env:
+      PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `wrangler preview` reads the config that the build writes, so the build comes first.
+      - name: Build
+        run: pnpm build
+
+      # @starter:oauth
+      # Previews ignore `secrets.required`, so the secrets come from this file. The file lives in
+      # the runner's temporary directory and is never printed.
+      - name: Write the Preview secrets file
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.PREVIEW_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.PREVIEW_GITHUB_CLIENT_SECRET }}
+          COOKIE_SECRET: ${{ secrets.PREVIEW_COOKIE_SECRET }}
+        run: |
+          umask 077
+          : > "$RUNNER_TEMP/preview.env"
+          for name in GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET COOKIE_SECRET; do
+            if [ -n "${!name}" ]; then
+              printf '%s=%s\n' "$name" "${!name}" >> "$RUNNER_TEMP/preview.env"
+            fi
+          done
+      # @starter:end
+
+      - name: Deploy the Preview
+        id: preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          args=(--name "$PREVIEW_NAME" --json)
+          if [ -s "$RUNNER_TEMP/preview.env" ]; then
+            args+=(--secrets-file "$RUNNER_TEMP/preview.env")
+          fi
+          pnpm exec wrangler preview "${args[@]}" > "$RUNNER_TEMP/preview.json"
+          url=$(jq -r '.preview.urls[0] // empty' "$RUNNER_TEMP/preview.json")
+          if [ -z "$url" ]; then
+            echo "::error title=No Preview URL::wrangler preview succeeded but its JSON output had no .preview.urls[0]."
+            exit 1
+          fi
+          echo "url=${url%/}" >> "$GITHUB_OUTPUT"
+
+      # A new Preview can take a few seconds to answer, so poll for up to 60 seconds.
+      - name: Check /healthz
+        env:
+          URL: ${{ steps.preview.outputs.url }}
+        run: |
+          for _ in $(seq 1 12); do
+            if curl -fsS --max-time 10 "$URL/healthz"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error title=Preview unreachable::$URL/healthz didn't answer within 60 seconds."
+          exit 1
+
+      # @starter:oauth
+      # An unauthenticated MCP request must get the OAuth challenge that points clients at the
+      # protected resource metadata, or no client can sign in.
+      - name: Check the MCP sign-in challenge
+        env:
+          URL: ${{ steps.preview.outputs.url }}
+        run: |
+          headers="$RUNNER_TEMP/mcp-headers.txt"
+          status=$(curl -sS --max-time 10 -o /dev/null -D "$headers" -w '%{http_code}' \
+            -X POST -H 'content-type: application/json' --data '{}' "$URL/mcp")
+          if [ "$status" != 401 ]; then
+            echo "::error title=Unexpected MCP status::POST $URL/mcp returned $status instead of 401."
+            exit 1
+          fi
+          if ! grep -qi '^www-authenticate:.*resource_metadata' "$headers"; then
+            echo "::error title=No resource metadata::The 401 from $URL/mcp has no WWW-Authenticate header with resource_metadata."
+            exit 1
+          fi
+      # @starter:end
+
+      # One comment per pull request, edited in place on every push.
+      - name: Comment the Preview URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.preview.outputs.url }}
+        run: |
+          body="Preview \`$PREVIEW_NAME\` is deployed from ${HEAD_SHA:0:7}: $URL
+
+          It's deleted when this pull request closes."
+          gh pr comment "$PR" --body "$body" --edit-last --create-if-none
+
+  cleanup:
+    name: Delete the Preview
+    if: >-
+      github.event.action == 'closed' &&
+      vars.DEPLOY_ENABLED == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: preview
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Delete the Preview
+        # A pull request opened before `DEPLOY_ENABLED` was set has no Preview to delete.
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+        run: pnpm exec wrangler preview delete --name "$PREVIEW_NAME" --skip-confirmation

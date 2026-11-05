@@ -1,0 +1,61 @@
+{
+  "name": "cloudflare-starter",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#*": "./src/*"
+  },
+  "scripts": {
+    "postinstall": "pnpm run typegen",
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "preview": "pnpm build && vite preview",
+    "typegen": "wrangler types --strict-vars=false && react-router typegen",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "pnpm typegen && oxlint",
+    "lint:fix": "oxlint --fix",
+    "typecheck": "pnpm typegen && tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check:deploy": "pnpm build && wrangler deploy --dry-run",
+    "verify": "pnpm fmt:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:deploy",
+    "deploy": "pnpm build && wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.2.4",
+    "@modelcontextprotocol/server": "2.4.0",
+    "agents": "0.33.0",
+    "hono": "4.13.16",
+    "isbot": "5.2.2",
+    "jose": "6.2.15",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.5.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.67.0",
+    "@cloudflare/vitest-plugin": "1.6.0",
+    "@msw/cloudflare": "0.2.0",
+    "@react-router/dev": "8.5.1",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitest/coverage-istanbul": "5.1.0",
+    "msw": "3.0.3",
+    "oxfmt": "0.76.0",
+    "oxlint": "1.91.0",
+    "oxlint-tsgolint": "7.0.2006",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "vitest": "5.1.0",
+    "wrangler": "4.158.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.16.1"
+}

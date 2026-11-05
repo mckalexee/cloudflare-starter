@@ -1,0 +1,55 @@
+// Renovate configuration. Renovate opens grouped update pull requests once a week, pins exact
+// versions, and merges patch updates on its own once CI passes. Blocks between `@starter:mcp` or
+// `@starter:web` and `@starter:end` belong to one half, so a project that drops that half can
+// delete them.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  // The recommended preset also turns on the github-actions manager, which moves the action major
+  // tags in `.github/workflows`.
+  extends: ["config:recommended"],
+  schedule: ["before 6am on monday"],
+  rangeStrategy: "pin",
+  // CI's frozen install rejects any lockfile entry younger than pnpm's one-day minimum release age
+  // unless pnpm-workspace.yaml excludes it. Waiting three days keeps update pull requests clear of
+  // that check.
+  minimumReleaseAge: "3 days",
+  prConcurrentLimit: 5,
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ["before 6am on monday"],
+  },
+  packageRules: [
+    {
+      matchUpdateTypes: ["patch"],
+      automerge: true,
+    },
+    {
+      // Keep the Node type definitions on the Node major in `.node-version`.
+      matchPackageNames: ["@types/node"],
+      allowedVersions: "<25",
+    },
+    {
+      groupName: "cloudflare",
+      matchPackageNames: ["wrangler", "@cloudflare/**"],
+    },
+    {
+      groupName: "oxc",
+      matchPackageNames: ["oxlint", "oxfmt", "oxlint-tsgolint"],
+    },
+    // @starter:mcp
+    {
+      // `agents` requires an exact version of the MCP SDK, so the two move together and a person
+      // reviews every update.
+      groupName: "mcp",
+      matchPackageNames: ["agents", "@modelcontextprotocol/**"],
+      automerge: false,
+    },
+    // @starter:end
+    // @starter:web
+    {
+      groupName: "react-router",
+      matchPackageNames: ["react-router", "@react-router/**"],
+    },
+    // @starter:end
+  ],
+}

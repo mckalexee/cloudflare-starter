@@ -1,0 +1,95 @@
+# Checks every pull request, and runs again as the first job of deploy.yml.
+#
+# - `verify` runs `pnpm verify`, the definition of done: format, lint, typecheck, tests, build,
+#   and a deploy dry run.
+# - `prune` runs `scripts/prune.ts` for each project variant and verifies the result, so a stale
+#   prune list fails here instead of in a new project.
+# - `workflows` lints the workflow files with actionlint.
+#
+# Needs no secrets or variables.
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A pull request run is superseded by the next push to the same branch. Any other run, including
+# the call from deploy.yml, gets a group of its own, so nothing cancels or evicts it.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # pnpm installs before setup-node, because `cache: pnpm` asks pnpm where its store is. The
+      # version comes from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: pnpm verify
+
+  prune:
+    name: Prune to ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Report every variant, not only the first one that fails.
+      fail-fast: false
+      matrix:
+        variant: [mcp-only, app-only, bearer]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prune
+        run: node scripts/prune.ts ${{ matrix.variant }}
+
+      # Pruning removes dependencies from package.json, so the lockfile has to change.
+      - name: Reinstall the pruned dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Verify
+        run: pnpm verify
+
+  workflows:
+    name: Lint the workflow files
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # The image bundles shellcheck and pyflakes, so `run` blocks are linted with no install
+      # step. Renovate moves the version tag.
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color

@@ -1,0 +1,92 @@
+// Wrangler configuration for the Worker: its runtime flags, bindings, and vars. Blocks between
+// `@starter:mcp`, `@starter:oauth`, or `@starter:web` and `@starter:end` belong to one part of the
+// template, so a project that drops that part can delete them.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cloudflare-starter",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-05",
+  "compatibility_flags": [
+    "nodejs_compat",
+    // @starter:oauth
+    // Client ID Metadata Documents in the OAuth provider need `global_fetch_strictly_public`.
+    "global_fetch_strictly_public",
+    // @starter:end
+  ],
+  // To serve production on a custom domain only, change `workers_dev` to false and uncomment
+  // `preview_urls` and `routes`. `preview_urls` keeps Previews on workers.dev.
+  "workers_dev": true,
+  // "preview_urls": true,
+  // "routes": [{ "pattern": "app.example.com", "custom_domain": true }],
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 },
+  },
+  // @starter:mcp
+  // Per-user state for MCP tools, such as the example tool's visit counts. Replace the placeholder
+  // with the ID that `wrangler kv namespace create` prints.
+  // @starter:end
+  // @starter:oauth
+  // The OAuth provider keeps its grants and tokens in the same namespace.
+  // @starter:end
+  // @starter:mcp
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_ID" }],
+  // @starter:end
+  // @starter:oauth
+  // Wrangler loads only these keys from `.dev.vars`, generates their types, and refuses to
+  // deploy while any of them is missing on the Worker.
+  "secrets": {
+    "required": ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "COOKIE_SECRET"],
+  },
+  // @starter:end
+  "vars": {
+    "APP_NAME": "Cloudflare Starter",
+    "ENVIRONMENT": "production",
+    // @starter:oauth
+    // The URL clients use for the MCP endpoint. OAuth tokens are bound to it.
+    "MCP_RESOURCE": "REPLACE_WITH_MCP_RESOURCE",
+    // Who may sign in: comma-separated GitHub logins or numeric user IDs, or `*` for every GitHub
+    // account. Empty allows no one, so set it before you deploy.
+    "ALLOWED_GITHUB_LOGINS": "",
+    // @starter:end
+    // @starter:web
+    // Cloudflare Access team domain and application AUD tag. Empty disables the identity gate.
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    // @starter:end
+  },
+  // Previews inherit nothing from production, so every var and binding is declared again.
+  // `secrets` isn't inherited either. Previews get secrets from `--secrets-file` or the base config.
+  "previews": {
+    "vars": {
+      "APP_NAME": "Cloudflare Starter",
+      "ENVIRONMENT": "preview",
+      // @starter:oauth
+      // Empty, because each Preview derives its resource URL from its own hostname at runtime.
+      "MCP_RESOURCE": "",
+      // The same format as in production. Empty allows no one into a Preview.
+      "ALLOWED_GITHUB_LOGINS": "",
+      // @starter:end
+      // @starter:web
+      "ACCESS_TEAM_DOMAIN": "",
+      "ACCESS_AUD": "",
+      // @starter:end
+    },
+    // @starter:mcp
+    // A separate namespace keeps Preview data out of production.
+    "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_PREVIEW_KV_ID" }],
+    // @starter:end
+  },
+  // @starter:web
+  // Fakes `ctx.access` for `wrangler dev` only. It matters only to code that reads `ctx.access`,
+  // which is absent in production behind the static assets router.
+  "access": {
+    "dev": {
+      "aud": "cloudflare-starter-dev",
+      "identity": { "email": "dev@example.com", "name": "Dev User" },
+    },
+  },
+  // @starter:end
+}

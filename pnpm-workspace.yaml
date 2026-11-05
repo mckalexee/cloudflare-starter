@@ -1,0 +1,16 @@
+allowBuilds:
+  core-js-pure: false
+  esbuild: true
+  workerd: true
+minimumReleaseAgeExclude:
+  - '@cloudflare/vitest-plugin@1.6.0'
+  - '@oxlint-tsgolint/darwin-arm64@7.0.2006'
+  - '@oxlint-tsgolint/darwin-x64@7.0.2006'
+  - '@oxlint-tsgolint/linux-arm64@7.0.2006'
+  - '@oxlint-tsgolint/linux-x64@7.0.2006'
+  - '@oxlint-tsgolint/win32-arm64@7.0.2006'
+  - '@oxlint-tsgolint/win32-x64@7.0.2006'
+  - miniflare@5.20261104.0-beta
+  - oxlint-tsgolint@7.0.2006
+  - vite@8.3.6
+  - wrangler@4.158.0

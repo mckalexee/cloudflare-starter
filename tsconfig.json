@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    // @starter:web
+    // Lets route modules import the types that `react-router typegen` writes as siblings.
+    "rootDirs": [".", "./.react-router/types"],
+    // @starter:end
+    "types": ["vite/client", "@cloudflare/vitest-plugin/types"]
+  },
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    // @starter:web
+    ".react-router/types/**/*",
+    // @starter:end
+    "worker-configuration.d.ts"
+  ]
+}

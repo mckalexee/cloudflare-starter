@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "singleQuote": false,
+  "sortImports": true,
+  "sortPackageJson": true,
+  "ignorePatterns": [
+    ".react-router/",
+    "worker-configuration.d.ts",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "dist/",
+    "build/",
+    "coverage/"
+  ]
+}

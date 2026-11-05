@@ -1,0 +1,93 @@
+# Deploys the Worker to production on every push to `main`, after CI passes. You can also run it
+# by hand from the Actions tab.
+#
+# Needs:
+# - Variable `DEPLOY_ENABLED` set to `true`. Until then the deploy job is skipped, so the
+#   template and a new project never deploy before their secrets exist.
+# - Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, in the repository or in the
+#   `production` environment.
+# - Optional variable `HEALTHCHECK_URL`, the Worker's base URL without a trailing slash, such as
+#   `https://example.com`. When it's set, the job checks `/healthz` after the deploy.
+#
+# The Worker's own secrets live on the Worker, not here. Upload them with `wrangler secret bulk`.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy to production
+    needs: ci
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    # Two deploys never overlap, and a deploy in flight is never cancelled.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      # Fail before the install, so a missing secret costs seconds and names what to add.
+      - name: Check the Cloudflare credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=()
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || missing+=(CLOUDFLARE_API_TOKEN)
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing+=(CLOUDFLARE_ACCOUNT_ID)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error title=Missing Cloudflare credentials::Add the secrets ${missing[*]} to the repository or to the production environment. docs/deploy.md lists the token permissions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The Vite plugin writes the deployable config and points Wrangler at it through
+      # `.wrangler/deploy/config.json`, so the build comes first.
+      - name: Build
+        run: pnpm build
+
+      # With no `wranglerVersion`, the action runs the Wrangler from package.json, which is the
+      # version CI tested.
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: pnpm
+          command: deploy
+
+      - name: Check /healthz
+        if: vars.HEALTHCHECK_URL != ''
+        env:
+          HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
+        run: |
+          # A new version can take a few seconds to reach every location, so retry briefly.
+          curl -fsS --max-time 10 --retry 6 --retry-delay 5 --retry-all-errors \
+            "${HEALTHCHECK_URL%/}/healthz"

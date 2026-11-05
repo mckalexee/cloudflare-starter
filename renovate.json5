@@ -8,7 +8,6 @@
   // tags in `.github/workflows`.
   extends: ["config:recommended"],
   schedule: ["before 6am on monday"],
-  rangeStrategy: "pin",
   // CI's frozen install rejects any lockfile entry younger than pnpm's one-day minimum release age
   // unless pnpm-workspace.yaml excludes it. Waiting three days keeps update pull requests clear of
   // that check.
@@ -19,6 +18,18 @@
     schedule: ["before 6am on monday"],
   },
   packageRules: [
+    {
+      // Pin only npm packages. GitHub Actions stay on their major tag so that GitHub moves the
+      // patch, and `.node-version` stays a bare major for the same reason.
+      matchManagers: ["npm"],
+      rangeStrategy: "pin",
+    },
+    {
+      // A Node major is a deliberate change to `.node-version`, `engines.node`, and the
+      // `@types/node` rule in this file, made together by hand.
+      matchDepNames: ["node"],
+      enabled: false,
+    },
     {
       matchUpdateTypes: ["patch"],
       automerge: true,

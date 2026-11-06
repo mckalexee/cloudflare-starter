@@ -95,16 +95,20 @@ A handler receives `(input, { env, props })`.
 | `accessToken` | The user's GitHub access token. Absent in bearer mode.                         |
 
 `resolveAuthProps()` in `src/mcp/handler.ts` checks the props once per request with a Zod schema
-and drops every field that the schema doesn't name. To carry a new field from the grant to the
-tools, add it to `AuthProps`, to that schema, and to the props that `src/auth/upstream/github.ts`
-passes to `completeAuthorization()`.
+and drops every field that the schema doesn't name. To carry a new field to the tools, add it to
+`AuthProps`, to that schema, and to the code that creates the props.
 
-Bearer mode has one user, with `id` `0`, the login `owner`, and every scope.
+Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `0`, the login `owner`, and
+every scope.
 
 Keep per-user KV keys under `user:<id>:`, as `account_record_visit` does with
-`user:<id>:visits`. The OAuth provider keeps its grants and tokens in the same namespace.
+`user:<id>:visits`.
 
 <!-- @starter:oauth -->
+
+With GitHub OAuth, `src/auth/upstream/github.ts` creates the props when it calls
+`completeAuthorization()`. The OAuth provider keeps its grants and tokens in the same KV
+namespace as the per-user keys.
 
 ## Call GitHub as the user
 

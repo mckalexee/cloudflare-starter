@@ -20,11 +20,28 @@ listing or a description of a function signature. Duplicated facts drift apart o
 ## File layout and naming
 
 - `src/worker.ts` is the composition root and the only module that knows about every area.
-- Each directory under `src/` owns one area: `http` (Hono routes and middleware), `mcp` (the MCP
-  server and its tools), `auth` (the OAuth flow), `web` (the React Router app), and `lib` (shared
-  helpers with no knowledge of any area).
+- Each directory under `src/` owns one area. `http` holds the Hono routes and middleware, and
+  `lib` holds shared helpers with no knowledge of any area.
+
+<!-- @starter:mcp -->
+
+- `mcp` holds the MCP server and its tools, and `auth` holds the sign-in for the MCP endpoint.
+
+<!-- @starter:end -->
+
+<!-- @starter:web -->
+
+- `web` holds the React Router app.
+
+<!-- @starter:end -->
+
+<!-- @starter:mcp -->
+
 - `src/mcp` and `src/auth` never import `src/web`, `react`, or `react-router`. Oxlint enforces
   this so that a project can delete the web app without breaking the MCP endpoint.
+
+<!-- @starter:end -->
+
 - Tests live in `test/`, in a directory named after the area they cover, as
   `test/<area>/<subject>.test.ts`.
 - Use kebab case for file names, such as `define-tool.ts`. React Router route modules follow
@@ -56,13 +73,18 @@ Comments explain intent. The code already says what it does.
 ## Errors
 
 - Define typed error classes in `src/lib/errors.ts` when more than one area handles them, and in
-  the area's own `errors.ts` otherwise, such as `ToolInputError` in `src/mcp/errors.ts`. Each class
-  carries the information that its caller needs to respond, such as an HTTP status or a hint for
-  fixing the input.
+  the area's own `errors.ts` otherwise. Each class carries the information that its caller needs
+  to respond, such as an HTTP status or a hint for fixing the input.
 - Throw these classes from the code that detects the problem. Don't build HTTP responses or MCP
   results deep in the call stack.
-- Map errors to responses at the edges: the Hono `onError` handler for HTTP, and the tool wrapper
-  in `src/mcp/define-tool.ts` for MCP tool results.
+- Map errors to responses at the edges, such as the Hono `onError` handler for HTTP.
+
+<!-- @starter:mcp -->
+
+- The tool wrapper in `src/mcp/define-tool.ts` is the edge for MCP tool results.
+
+<!-- @starter:end -->
+
 - Let unexpected errors propagate. The edge logs them and returns a generic 500 response, so the
   client never sees a stack trace or an upstream error body.
 

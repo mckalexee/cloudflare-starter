@@ -21,8 +21,8 @@ the configuration without an account. It's the last step of `pnpm verify`.
 
 ## Worker secrets
 
-`secrets.required` in `wrangler.jsonc` lists the secrets that the Worker needs. It does three
-things:
+List every secret that the Worker needs in `secrets.required` in `wrangler.jsonc`. The list does
+three things:
 
 - `wrangler dev` and `pnpm dev` load only the listed keys from `.dev.vars`. Any other key in that
   file is ignored, and a `.dev.vars` entry can't override a var.
@@ -63,8 +63,8 @@ Previews inherit nothing from production:
 
 - **Vars and bindings:** the `previews` block in `wrangler.jsonc` declares them again. A binding
   that the code uses but the block lacks can fail the Preview with error 1101.
-- **Secrets:** Previews ignore `secrets.required` and never read production secrets. A Preview
-  gets its secrets from three places:
+- **Secrets:** Previews never read production secrets, and `secrets.required` doesn't apply to
+  them. A Preview gets its secrets from three places:
   - The Preview base config, which every new Preview copies when it's created. Set it with
     `wrangler preview base-config secret put <KEY>` or `wrangler preview base-config secret bulk
     <file>`. A later change to the base config reaches only new Previews.
@@ -135,9 +135,9 @@ The workflows read these secrets and variables:
 | `CLOUDFLARE_API_TOKEN`         | Secret   | `deploy.yml`, `preview.yml` | The API token that Wrangler uses.                                                                   |
 | `CLOUDFLARE_ACCOUNT_ID`        | Secret   | `deploy.yml`, `preview.yml` | The account to deploy to.                                                                           |
 | `HEALTHCHECK_URL`              | Variable | `deploy.yml`                | Optional. The Worker's base URL without a trailing slash. The job checks `/healthz` after a deploy. |
-| `PREVIEW_GITHUB_CLIENT_ID`     | Secret   | `preview.yml`               | Optional. Passed to Previews as `GITHUB_CLIENT_ID`.                                                 |
-| `PREVIEW_GITHUB_CLIENT_SECRET` | Secret   | `preview.yml`               | Optional. Passed to Previews as `GITHUB_CLIENT_SECRET`.                                             |
-| `PREVIEW_COOKIE_SECRET`        | Secret   | `preview.yml`               | Optional. Passed to Previews as `COOKIE_SECRET`.                                                    |
+| `PREVIEW_GITHUB_CLIENT_ID`     | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `GITHUB_CLIENT_ID`.                                                 |
+| `PREVIEW_GITHUB_CLIENT_SECRET` | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `GITHUB_CLIENT_SECRET`.                                             |
+| `PREVIEW_COOKIE_SECRET`        | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `COOKIE_SECRET`.                                                    |
 | `PREVIEW_MCP_BEARER_TOKEN`     | Secret   | `preview.yml`, bearer mode  | Optional, after you add the Preview secrets step for bearer mode. Passed as `MCP_BEARER_TOKEN`.     |
 
 GitHub reserves the `GITHUB_` prefix for its own secrets, which is why the Preview secrets carry
@@ -261,7 +261,6 @@ page:
 - **D1:** Previews that bind the same `database_id` share rows. Bind Previews to a staging
   database under `previews.d1_databases`, and apply migrations to it once, because every Preview
   shares it.
-- **KV and R2:** shared unless the `previews` block binds a different namespace or bucket, as this
-  template does for `OAUTH_KV`.
+- **KV and R2:** shared unless the `previews` block binds a different namespace or bucket.
 
 Add each new binding to the [binding checklist](../AGENTS.md#add-a-binding-var-or-secret).

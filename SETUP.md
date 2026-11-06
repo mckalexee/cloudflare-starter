@@ -295,10 +295,10 @@ instead, the user creates an API token with the **Access: Apps and Policies Writ
 The token never enters the conversation. Either the user exports it as `ACCESS_API_TOKEN` in the
 shell that runs your commands, or the user runs the `curl` loop from `docs/web.md` in their own
 terminal and tells you the `aud` values that it prints. Use the allowed emails or email domain
-from the inputs in the allow policy. Write the payload files to the temporary directory that the
-loop reads, never to the project folder, because step 15 commits every file there and the allow
-policy holds email addresses. Create the bypass application first, so its paths are never
-blocked.
+from the inputs in the allow policy. Write the payload files to a temporary directory from
+`mktemp -d`, never to the project folder, because step 15 commits every file there and the allow
+policy holds email addresses. If the user runs the loop, tell them to set `payloads` to that
+directory first. Create the bypass application first, so its paths are never blocked.
 
 Then set the vars in `wrangler.jsonc`, in both `vars` and `previews.vars`:
 
@@ -528,8 +528,9 @@ claude mcp add --transport http <name> https://<host>/mcp \
   --header "Authorization: Bearer $(grep '^MCP_BEARER_TOKEN=' .dev.vars | cut -d= -f2-)"
 ```
 
-Run it from the project folder. The shell reads the token from `.dev.vars`, so the token stays
-out of the typed command, the shell history, and your conversation.
+Ask the user to run it in their own terminal from the project folder, so the token never appears
+in your conversation. The shell reads the token from `.dev.vars`, so it also stays out of the
+typed command and the shell history.
 
 The tool returns the message it was sent. If sign-in ends with `access_denied`, the GitHub
 account isn't in `ALLOWED_GITHUB_LOGINS`. A web-app-only project skips this step.

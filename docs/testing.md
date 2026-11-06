@@ -35,6 +35,8 @@ fails and the normal run passes, a test depends on the order the files run in.
 
 <!-- @starter:end -->
 
+<!-- @starter:web -->
+
 - `reactRouter()` in `plugins` resolves `virtual:react-router/server-build`, so requests reach the
   real Worker entry and the real web app.
 - `environments.ssr.resolve.conditions` puts back the Workers resolve conditions (`workerd`,
@@ -42,6 +44,9 @@ fails and the normal run passes, a test depends on the order the files run in.
   environment, which drops them, and without them packages such as `@msw/cloudflare` load their
   Node entry instead of their Workers entry. The values match the Cloudflare Vite plugin's
   production build.
+
+<!-- @starter:end -->
+
 - `testTimeout` is 15 seconds instead of vitest's 5. The first request in a test file loads the
   Worker and its dependencies, which can take longer than five seconds on a busy machine.
 - `coverage` uses istanbul over `src/**`. Istanbul instruments the code before it runs, so it

@@ -41,15 +41,13 @@ pnpm tail                            # stream the deployed Worker's live logs
 - Never deploy unless the user asks you to. To deploy by hand, run `pnpm run deploy`, never
   `pnpm deploy`, which is a built-in pnpm command. A push to `main` deploys through
   `.github/workflows/deploy.yml` once the repository variable `DEPLOY_ENABLED` is `true`.
-- Each pull request gets a Worker Preview named `pr-<number>`, and the workflow comments its URL
-  on the pull request.
+- Each pull request gets a Worker Preview named `pr-<number>`, and a comment with its URL.
 
 ## Layout
 
-`src/worker.ts` is the composition root and the only module that knows about every area. Import a
-module outside the current directory through its `#` subpath, such as `#lib/log.ts`, and always
-write the file extension. [docs/conventions.md](docs/conventions.md#file-layout-and-naming) has
-the directory layout and the naming rules.
+`src/worker.ts` is the composition root, the only module that knows about every area. Import a
+module outside the current directory through its `#` subpath with the file extension, such as
+`#lib/log.ts`. [docs/conventions.md](docs/conventions.md#file-layout-and-naming) has the rules.
 
 <!-- @starter:mcp -->
 
@@ -86,12 +84,10 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 
 ### Add a route
 
-- HTTP route: add it to a router in `src/http/routes/` and mount it in `src/http/index.ts`
-  before the catch-all. Throw `HttpError` for failures. Add `requireIdentity()` for a private
-  route.
+- HTTP route: add it to a router in `src/http/routes/`, mount it in `src/http/index.ts` before
+  the catch-all, and throw `HttpError` for failures. Add `requireIdentity()` for a private route.
 - Web page: add a module in `src/web/routes/` and an entry in `src/web/routes.ts`. On a private
-  site, the page needs an Access identity unless you add its pattern to `PUBLIC_PATHS` in
-  `src/web/root.tsx`.
+  site, it needs an Access identity unless its pattern is in `PUBLIC_PATHS` in `src/web/root.tsx`.
 - Add tests in `test/http/` or `test/web/`.
 
 <!-- @starter:end -->
@@ -100,8 +96,8 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 
 1. Declare it at the top level of `wrangler.jsonc`.
 2. Declare it again in the `previews` block. Previews inherit nothing from production.
-3. For a secret, add its name to `secrets.required`, describe it in `.dev.vars.example`, and
-   give it a test value in the `miniflare.bindings` of `vitest.config.ts`.
+3. For a secret, add its name to `secrets.required`, which you create if it's missing, describe
+   it in `.dev.vars.example`, and give it a test value in `vitest.config.ts`.
 4. Run `pnpm typegen`.
 5. Tell the user to set the production secret before the next deploy. `wrangler deploy` fails
    while a required secret is missing. [docs/deploy.md](docs/deploy.md) covers Preview secrets.
@@ -124,9 +120,8 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 
 <!-- @starter:oauth -->
 
-- Auth handlers read the provider's helpers from `c.env.OAUTH_PROVIDER`. Never use `env` from
-  `cloudflare:workers` for them: the provider adds the helpers only to the `env` it passes to
-  each request.
+- Auth handlers read the provider's helpers from `c.env.OAUTH_PROVIDER`, never from the `env` in
+  `cloudflare:workers`, because the provider adds them only to the `env` of each request.
 - The consent page lives in `src/auth/consent.ts` and renders with `hono/html`, which escapes
   every value. Keep it in `src/auth`.
 - `MCP_RESOURCE` must equal the URL that clients use for `/mcp`, because every token is bound to
@@ -146,9 +141,8 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 ## Writing
 
 Follow [docs/conventions.md](docs/conventions.md) for structure, comments, errors, logging, and
-prose. Every source file opens with a header comment, exported symbols get prose JSDoc without
-tags, comments explain why, and prose follows the Google developer documentation style with no
-em dashes.
+prose: a header comment in every source file, prose JSDoc without tags on exports, comments that
+explain why, and the Google developer documentation style with no em dashes.
 
 Topic guides:
 

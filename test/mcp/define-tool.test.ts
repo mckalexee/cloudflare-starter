@@ -1,5 +1,6 @@
-// Tests for `defineTool`: the annotations it derives from a tool's effect, and the error mapping.
-// Each error test registers a tool that throws and checks the tool result the client receives.
+// Tests for `defineTool`: the annotations it derives from a tool's effect, the line it logs for
+// each call, and the error mapping. Each error test registers a tool that throws and checks the
+// tool result the client receives.
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { createExecutionContext } from "cloudflare:test";
@@ -63,6 +64,68 @@ describe("defineTool annotations", () => {
       idempotentHint: false,
       openWorldHint: true,
     });
+  });
+});
+
+// The parsed `mcp.tool_called` lines from a `console.info` spy.
+function calledLines(info: { mock: { calls: unknown[][] } }): unknown[] {
+  return info.mock.calls
+    .map(([line]): unknown => JSON.parse(String(line)))
+    .filter(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        "event" in entry &&
+        entry.event === "mcp.tool_called",
+    );
+}
+
+describe("defineTool call log", () => {
+  it("logs a successful call with the tool, the login, and the duration", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const client = clientWith(
+      defineTool({
+        name: "test_echo_input",
+        title: "Echo",
+        description: "Returns its input.",
+        effect: "read",
+        input: z.object({ text: z.string() }),
+        handler: async ({ text }) => ({ text }),
+      }),
+    );
+
+    const result = await client.callTool("test_echo_input", { text: "hello" });
+
+    expect(result.isError).toBeFalsy();
+    expect(calledLines(info)).toEqual([
+      {
+        level: "info",
+        event: "mcp.tool_called",
+        tool: "test_echo_input",
+        login: "tester",
+        durationMs: expect.any(Number),
+        isError: false,
+      },
+    ]);
+  });
+
+  it("logs a call that returns a tool error", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const client = clientFor(new ToolInputError("The folder doesn't exist.", "List folders."));
+
+    const result = await client.callTool("test_fail_always");
+
+    expect(result.isError).toBe(true);
+    expect(calledLines(info)).toEqual([
+      {
+        level: "info",
+        event: "mcp.tool_called",
+        tool: "test_fail_always",
+        login: "tester",
+        durationMs: expect.any(Number),
+        isError: true,
+      },
+    ]);
   });
 });
 

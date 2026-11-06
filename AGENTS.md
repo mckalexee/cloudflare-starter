@@ -34,6 +34,7 @@ pnpm test:coverage                   # istanbul coverage report in coverage/
 pnpm test test/http/healthz.test.ts  # one test file
 pnpm fmt                             # fix formatting
 pnpm typegen                         # regenerate the generated types
+pnpm tail                            # stream the deployed Worker's live logs
 ```
 
 - A change is done when `pnpm verify` passes. Run it before you report a change as finished.
@@ -66,11 +67,18 @@ so a project can delete the web app without breaking the MCP endpoint.
 1. Create a module in `src/mcp/tools/` that exports a `defineTool()` registration.
 2. Name it `<area>_<verb>_<noun>`. Write the description in four parts: when to call it, what
    the inputs mean, what it changes, and what it returns. Set `effect` and `openWorld`
-   honestly, and set `scope` when it reads or changes the user's data.
+   honestly, and set `scope` when it reads or changes the user's data. A new scope goes in
+   `SCOPES` and `SCOPE_DESCRIPTIONS` in `src/env.ts`.
 3. Add it to the array in `src/mcp/tools/index.ts`. The server instructions list it on their own.
-4. Add tests in `test/mcp/`, and update the tool count in `test/mcp/tools.test.ts`.
+4. Add tests in `test/mcp/`.
 
 [docs/mcp.md](docs/mcp.md) has a worked example of a tool and its test.
+
+### Replace the example tools
+
+Change these together: the tool modules in `src/mcp/tools/` and their tests in `test/mcp/`,
+`SCOPES` and `SCOPE_DESCRIPTIONS` in `src/env.ts`, and the `INSTRUCTIONS` text in
+`src/mcp/instructions.ts`.
 
 <!-- @starter:end -->
 
@@ -100,14 +108,14 @@ so a project can delete the web app without breaking the MCP endpoint.
 
 ## Invariants
 
-- `secrets.required` filters `.dev.vars`: only the listed keys load, and a `.dev.vars` entry
-  can't override a `vars` value. Change local vars in `wrangler.jsonc`.
 - Never log a token, secret, cookie, or other credential. Log an ID to say who made a request.
 - pnpm refuses a dependency version that's younger than one day. To use one, commit its
   `minimumReleaseAgeExclude` entry in `pnpm-workspace.yaml`, or pick an older version.
 
 <!-- @starter:mcp -->
 
+- `secrets.required` filters `.dev.vars`: only the listed keys load, and a `.dev.vars` entry
+  can't override a `vars` value. Change local vars in `wrangler.jsonc`.
 - `McpAgent` is deprecated and banned by oxlint. Serve MCP through `src/mcp/handler.ts`.
 - Per-user KV keys start with `user:<id>:`, so they stay apart from every other record in the
   namespace.

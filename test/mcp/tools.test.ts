@@ -21,12 +21,12 @@ function ownerClient() {
 }
 
 describe("tools/list", () => {
-  it("lists both tools with annotations that match their effects", async () => {
+  it("lists every registered tool with annotations that match their effects", async () => {
     const listed = (await ownerClient().listTools()).tools;
 
     const echo = listed.find((tool) => tool.name === "example_echo_message");
     const visit = listed.find((tool) => tool.name === "account_record_visit");
-    expect(listed).toHaveLength(2);
+    expect(listed.map((tool) => tool.name)).toEqual(tools.map((tool) => tool.name));
     expect(echo?.annotations).toEqual({
       readOnlyHint: true,
       destructiveHint: false,

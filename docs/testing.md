@@ -26,9 +26,15 @@ fails and the normal run passes, a test depends on the order the files run in.
 
 - `cloudflareTest({ wrangler: { configPath: "./wrangler.jsonc" } })` loads the Worker's bindings
   and compatibility settings from the same file that production uses.
+
+<!-- @starter:oauth -->
+
 - `miniflare.bindings` supplies fixed test values for the secrets in `secrets.required`, and sets
   `MCP_RESOURCE` to `http://localhost:5173/mcp`, so tests never read `.dev.vars`. A new secret
   needs a value here.
+
+<!-- @starter:end -->
+
 - `reactRouter()` in `plugins` resolves `virtual:react-router/server-build`, so requests reach the
   real Worker entry and the real web app.
 - `environments.ssr.resolve.conditions` puts back the Workers resolve conditions (`workerd`,
@@ -36,8 +42,8 @@ fails and the normal run passes, a test depends on the order the files run in.
   environment, which drops them, and without them packages such as `@msw/cloudflare` load their
   Node entry instead of their Workers entry. The values match the Cloudflare Vite plugin's
   production build.
-- `testTimeout` is 15 seconds instead of vitest's 5. The first request in a test file loads the MCP
-  SDK and the OAuth library, which can take longer than five seconds on a busy machine.
+- `testTimeout` is 15 seconds instead of vitest's 5. The first request in a test file loads the
+  Worker and its dependencies, which can take longer than five seconds on a busy machine.
 - `coverage` uses istanbul over `src/**`. Istanbul instruments the code before it runs, so it
   works inside workerd, where V8 coverage isn't available.
 
@@ -89,7 +95,18 @@ before each test, `*` by default, returns a setter, and restores the value after
 <!-- @starter:end -->
 
 To pass different bindings to one call only, spread `env` into a new object, such as
-`{ ...env, APP_NAME: "Test" }`, and pass it to the handler under test.
+`{ ...env, APP_NAME: "Test" }`, and pass it to code that takes `env` as an argument. The Hono
+app's `fetch(request, env, ctx)` takes it, and its routes read the object as `c.env`.
+
+<!-- @starter:mcp -->
+
+The bearer token check in `src/auth/bearer.ts` also reads the `env` that you pass. MCP tools
+don't. The MCP handler gives each tool the module-level `env` from `cloudflare:workers`, whatever
+`env` you pass to the handler, so such a test still runs the tool with the default values. To
+change a binding that a tool reads, assign to `env` from `cloudflare:workers` and restore it after
+the test, as the start of this section describes.
+
+<!-- @starter:end -->
 
 ## Mock outbound requests
 

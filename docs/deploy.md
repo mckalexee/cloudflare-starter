@@ -117,11 +117,11 @@ in the base config with `wrangler preview base-config secret put MCP_BEARER_TOKE
 
 ## GitHub Actions
 
-| Workflow      | Runs on                                                  | Does                                                                                      |
-| ------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `ci.yml`      | Every pull request, and as the first job of `deploy.yml` | `pnpm verify`, the prune variants while the template's setup files remain, and actionlint |
-| `preview.yml` | Pull requests opened, updated, reopened, or closed       | Deploys, checks, and comments a Preview, and deletes it on close                          |
-| `deploy.yml`  | Push to `main`, or a manual run                          | CI, then `pnpm build` and `wrangler deploy`, then an optional health check                |
+| Workflow      | Runs on                                                  | Does                                                                           |
+| ------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `ci.yml`      | Every pull request, and as the first job of `deploy.yml` | The jobs that its header comment lists, including `pnpm verify` and actionlint |
+| `preview.yml` | Pull requests opened, updated, reopened, or closed       | Deploys, checks, and comments a Preview, and deletes it on close               |
+| `deploy.yml`  | Push to `main`, or a manual run                          | CI, then `pnpm build` and `wrangler deploy`, then an optional health check     |
 
 Nothing deploys until the repository variable `DEPLOY_ENABLED` is `true`. Until then, the deploy
 and Preview jobs are skipped, so the template and a new project never deploy before their secrets

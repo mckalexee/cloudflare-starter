@@ -75,7 +75,9 @@ export type ToolSpec<Input extends z.ZodObject, Output extends z.ZodObject | und
  * against the caller's scopes, runs your handler, and returns the result as pretty-printed JSON
  * text. A `ToolInputError` or an `HttpError` becomes a tool error whose text tells the agent how to
  * fix the call. Any other error is logged and reported as a generic tool error, so internal
- * details never reach the client.
+ * details never reach the client. Every call that returns a result, including a tool error, logs
+ * one `mcp.tool_called` line with the tool name, the caller's login, the duration, and whether
+ * the result is a tool error.
  */
 export function defineTool<
   Input extends z.ZodObject,
@@ -108,6 +110,24 @@ export function defineTool<
 }
 
 async function runTool<Input extends z.ZodObject, Output extends z.ZodObject | undefined>(
+  spec: ToolSpec<Input, Output>,
+  input: z.infer<Input>,
+  context: ToolContext,
+): Promise<CallToolResult> {
+  // Workers advance the clock only across I/O, so the duration is the time the call spent waiting
+  // on I/O, which is most of a tool's time.
+  const started = Date.now();
+  const result = await callTool(spec, input, context);
+  log.info("mcp.tool_called", {
+    tool: spec.name,
+    login: context.props.login,
+    durationMs: Date.now() - started,
+    isError: result.isError === true,
+  });
+  return result;
+}
+
+async function callTool<Input extends z.ZodObject, Output extends z.ZodObject | undefined>(
   spec: ToolSpec<Input, Output>,
   input: z.infer<Input>,
   context: ToolContext,

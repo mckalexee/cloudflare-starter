@@ -86,9 +86,14 @@ of the following are true:
 - The package runs in workerd without Node-only APIs beyond what `nodejs_compat` provides.
 - The package is maintained and its size is reasonable for a Worker bundle.
 
-Pin the exact version (`pnpm add -E`). Renovate proposes updates. `agents` and
-`@modelcontextprotocol/server` move together, because `agents` requires an exact version of the
-MCP SDK.
+Pin the exact version (`pnpm add -E`). Renovate proposes updates.
+
+<!-- @starter:mcp -->
+
+`agents` and `@modelcontextprotocol/server` move together, because `agents` requires an exact
+version of the MCP SDK.
+
+<!-- @starter:end -->
 
 ## Writing style
 

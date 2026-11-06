@@ -3,6 +3,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { SCOPES } from "#env.ts";
+
 import { ORIGIN, RESOURCE, workerFetch } from "../helpers/oauth.ts";
 
 const resourceMetadataSchema = z.looseObject({
@@ -49,7 +51,7 @@ describe("authorization server metadata", () => {
       authorization_endpoint: `${ORIGIN}/authorize`,
       token_endpoint: `${ORIGIN}/token`,
       registration_endpoint: `${ORIGIN}/register`,
-      scopes_supported: ["profile"],
+      scopes_supported: [...SCOPES],
     });
     expect(metadata.code_challenge_methods_supported).toContain("S256");
   });

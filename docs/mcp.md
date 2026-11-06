@@ -68,29 +68,14 @@ Describe what the scope allows, not what today's tools do with it.
 
 ## How `defineTool` works
 
-`defineTool()` in `src/mcp/define-tool.ts` takes a `ToolSpec` and returns a `ToolRegistration`
-with the tool's name, its title, and a `register` function. The wrapper does the following on
-every call:
+The comments in `src/mcp/define-tool.ts` describe what the wrapper does on each call: the scope
+check, the result format, the error mapping, and the `mcp.tool_called` log line. `ToolInputError`
+in `src/mcp/errors.ts` says when to throw it. Two facts aren't in those comments:
 
-1. If the tool declares a `scope` that the caller's token doesn't carry, it returns a tool error
-   that names the scope, without running the handler.
-2. It runs your handler with the parsed input and the `ToolContext`. The MCP SDK has already
-   validated the input against `input`. Invalid input never reaches the handler: the SDK
-   returns a tool error that names the field.
-3. It returns the result as pretty-printed JSON text. When the tool declares `output`, it also
-   returns the result as `structuredContent`.
-4. It turns a `ToolInputError` into a tool error with the error's `fix` hint, and an `HttpError`
-   or `UpstreamError` into a tool error with a hint for its status. It logs a 5xx `HttpError`
-   without its cause.
-5. It logs any other error as `mcp.tool_failed` and returns a generic message, so internal
-   details never reach the client. A `ProtocolError` from the SDK passes through.
-
-Every tool error ends with a line that starts with `Fix:`, and the server instructions tell the
-agent to follow it before it retries.
-
-Throw `ToolInputError` from `src/mcp/errors.ts` when input passes the schema but can't be used,
-such as an ID that doesn't exist. Give it a message and one sentence that tells the agent how to
-fix the call.
+- The MCP SDK validates the input against `input` before the wrapper runs. Invalid input never
+  reaches your handler, because the SDK returns a tool error that names the field.
+- Every tool error ends with a line that starts with `Fix:`, and the server instructions tell the
+  agent to follow it before it retries.
 
 ## Props and bindings
 
@@ -110,16 +95,20 @@ A handler receives `(input, { env, props })`.
 | `accessToken` | The user's GitHub access token. Absent in bearer mode.                         |
 
 `resolveAuthProps()` in `src/mcp/handler.ts` checks the props once per request with a Zod schema
-and drops every field that the schema doesn't name. To carry a new field from the grant to the
-tools, add it to `AuthProps`, to that schema, and to the props that `src/auth/upstream/github.ts`
-passes to `completeAuthorization()`.
+and drops every field that the schema doesn't name. To carry a new field to the tools, add it to
+`AuthProps`, to that schema, and to the code that creates the props.
 
-Bearer mode has one user, with `id` `0`, the login `owner`, and every scope.
+Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `0`, the login `owner`, and
+every scope.
 
 Keep per-user KV keys under `user:<id>:`, as `account_record_visit` does with
-`user:<id>:visits`. The OAuth provider keeps its grants and tokens in the same namespace.
+`user:<id>:visits`.
 
 <!-- @starter:oauth -->
+
+With GitHub OAuth, `src/auth/upstream/github.ts` creates the props when it calls
+`completeAuthorization()`. The OAuth provider keeps its grants and tokens in the same KV
+namespace as the per-user keys.
 
 ## Call GitHub as the user
 
@@ -173,6 +162,11 @@ requests. [testing.md](testing.md) describes the helpers.
 
 This tool lists the signed-in user's GitHub repositories. It adds a scope, calls GitHub with the
 user's token, and returns structured content.
+
+Bearer mode has no upstream token, so this tool's GitHub call always fails there with "This
+connection has no GitHub token." In bearer mode, follow the same steps with a handler that uses
+only its input and this Worker's bindings, as `example_echo_message` and `account_record_visit`
+do.
 
 ### 1. Add the scope
 
@@ -375,16 +369,13 @@ describe("github_list_repositories", () => {
 });
 ```
 
-### 5. Update the tests that pin the lists
+### 5. Run the checks
 
-Existing tests assert exact lists. Update them in the same change:
-
-- `test/mcp/tools.test.ts` expects two tools from `tools/list`.
+Run `pnpm verify`. `test/mcp/tools.test.ts` compares `tools/list` with the `tools` array, so the
+new tool needs no change there.
 
 <!-- @starter:oauth -->
 
-- `test/auth/discovery.test.ts` expects `scopes_supported` to be `["profile"]`.
+`test/auth/discovery.test.ts` compares `scopes_supported` with `SCOPES` the same way.
 
 <!-- @starter:end -->
-
-Then run `pnpm verify`.

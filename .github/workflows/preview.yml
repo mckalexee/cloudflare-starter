@@ -5,12 +5,14 @@
 # - Variable `DEPLOY_ENABLED` set to `true`. Until then both jobs are skipped.
 # - Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, in the repository or in the
 #   `preview` environment.
+# @starter:oauth
 # - Optional secrets `PREVIEW_GITHUB_CLIENT_ID`, `PREVIEW_GITHUB_CLIENT_SECRET`, and
 #   `PREVIEW_COOKIE_SECRET`. The job passes each one that's set to the Preview as the Worker
 #   secret of the same name without the `PREVIEW_` prefix. GitHub reserves the `GITHUB_` prefix
 #   for its own secrets, so the names can't match the Worker's. A secret you leave unset comes
 #   from the Preview base config (`wrangler preview base-config secret put`), or from the previous
 #   deployment of the same Preview.
+# @starter:end
 #
 # Pull requests from forks never get a Preview, because their runs can't read secrets.
 name: Preview

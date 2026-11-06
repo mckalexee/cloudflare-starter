@@ -256,15 +256,20 @@ You can also protect the Worker itself from **Workers & Pages** > your Worker > 
 covers every hostname and Preview of the Worker. Use the AUD of whichever application protects
 the hostname.
 
+A self-hosted application needs a hostname on a zone in your account, so Worker-level Access is
+how you protect a site on its `workers.dev` hostname. It covers `/healthz` too, with no bypass,
+so leave the `HEALTHCHECK_URL` repository variable unset.
+
 <!-- @starter:mcp -->
 
 ### Both halves on one hostname
 
 Worker-level Access would block `/mcp`, the OAuth endpoints, and the discovery documents, and MCP
-clients can't complete an Access login. Use two self-hosted applications instead: the allow
-application, and a bypass application for the health check and the MCP and OAuth paths. Access
-applies the most specific match first, so the bypass application wins on its paths and the allow
-application covers everything else. `bypass-app.json`:
+clients can't complete an Access login, so a private web app next to MCP needs a custom domain.
+On that hostname, use two self-hosted applications instead: the allow application, and a bypass
+application for the health check and the MCP and OAuth paths. Access applies the most specific
+match first, so the bypass application wins on its paths and the allow application covers
+everything else. `bypass-app.json`:
 
 ```json
 {
@@ -313,7 +318,17 @@ pages answer 403 while public pages render.
 ### Create the applications
 
 Create the bypass application first, so its paths are never blocked, then the allow application.
-Use an API token that has the **Access: Apps and Policies Write** permission:
+Use an API token that has the **Access: Apps and Policies Write** permission.
+
+Keep the payload files out of the repository, because the allow policy holds email addresses.
+Create a temporary directory:
+
+```sh
+payloads=$(mktemp -d)
+```
+
+Save the payloads as `"$payloads/bypass-app.json"` and `"$payloads/allow-app.json"`. Then create
+the applications and delete the directory:
 
 ```sh
 for app in bypass-app.json allow-app.json; do
@@ -321,9 +336,10 @@ for app in bypass-app.json allow-app.json; do
     --request POST \
     --header "Authorization: Bearer $ACCESS_API_TOKEN" \
     --header "Content-Type: application/json" \
-    --data "@$app" \
+    --data "@$payloads/$app" \
     | jq '{success, errors, name: .result.name, aud: .result.aud}'
 done
+rm -r "$payloads"
 ```
 
 In the dashboard, the same applications are **Zero Trust** > **Access controls** >

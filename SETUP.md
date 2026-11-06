@@ -30,25 +30,33 @@ Ask these questions in order:
    namespaces. Preview hostnames prepend `pr-<number>-` to it, which is why it stays short.
 2. **Display name.** The name people see, such as `Acme Tools`. It becomes `APP_NAME`. Suggest the
    project name in title case.
-3. **GitHub owner.** The user or organization that owns the new repository. Suggest the owner of
+3. **Description** (optional). One sentence that says what the project does, such as
+   `Tracks support requests for the Acme team.` Step 2 sets it as the repository description, and
+   step 3 puts it in the MCP server's instructions. If the user doesn't give one, skip both uses.
+4. **GitHub owner.** The user or organization that owns the new repository. Suggest the owner of
    the GitHub account that `gh auth status` reports.
-4. **Halves.** Which parts to keep: both the MCP endpoint and the web app, the MCP endpoint only,
+5. **Halves.** Which parts to keep: both the MCP endpoint and the web app, the MCP endpoint only,
    or the web app only.
-5. **MCP sign-in mode** (MCP endpoint kept). GitHub OAuth, where each person signs in with their
+6. **MCP sign-in mode** (MCP endpoint kept). GitHub OAuth, where each person signs in with their
    own GitHub account, or bearer mode, where one static bearer token serves a single user.
-6. **Web access** (web app kept). Private behind Cloudflare Access, or public. For private, ask
+7. **Web access** (web app kept). Private behind Cloudflare Access, or public. For private, ask
    who may sign in: a list of email addresses, an email domain, or both.
-7. **`workers.dev` subdomain and hostname.** First ask for the account's `workers.dev` subdomain,
+8. **`workers.dev` subdomain and hostname.** First ask for the account's `workers.dev` subdomain,
    which the dashboard shows on the **Workers & Pages** overview page. Ask for it even when the
    user plans a custom domain and doesn't offer it, because Previews always run on `workers.dev`.
    Then ask for the hostname: the Worker's `workers.dev` hostname,
    `<name>.<subdomain>.workers.dev`, or a custom domain on a zone in the user's Cloudflare account,
    such as `tools.example.com`.
-8. **Cloudflare account ID.** The dashboard shows it on the account home page and in the
+
+   If the user keeps both halves and wants a private web app, reject the `workers.dev` hostname
+   and tell the user why: Worker-level Access would block `/mcp`, so that combination needs a
+   custom domain or a public web app. Then ask for a custom domain, or ask question 7 again.
+
+9. **Cloudflare account ID.** The dashboard shows it on the account home page and in the
    **Workers & Pages** sidebar.
-9. **Allowed GitHub accounts** (GitHub OAuth). The GitHub logins or numeric user IDs that may sign
-   in, separated by commas, or `*` for every GitHub account.
-10. **OAuth on Previews** (GitHub OAuth). Whether pull request Previews should support MCP sign-in.
+10. **Allowed GitHub accounts** (GitHub OAuth). The GitHub logins or numeric user IDs that may
+    sign in, separated by commas, or `*` for every GitHub account.
+11. **OAuth on Previews** (GitHub OAuth). Whether pull request Previews should support MCP sign-in.
     It needs a second GitHub OAuth app with a wildcard callback. Without it, Previews still deploy
     and pass their checks, but sign-in on a Preview fails.
 
@@ -69,6 +77,7 @@ The steps use these placeholders:
 
 - `<name>`: the project name.
 - `<display-name>`: the display name.
+- `<description>`: the description, if the user gave one.
 - `<owner>`: the GitHub owner.
 - `<subdomain>`: the account's `workers.dev` subdomain.
 - `<host>`: the hostname.
@@ -95,10 +104,13 @@ If a tool is missing, ask the user to install it and stop until they confirm.
 ### 2. Create the repository
 
 ```sh
-gh repo create <owner>/<name> --template mckalexee/cloudflare-starter --private --clone
+gh repo create <owner>/<name> --template mckalexee/cloudflare-starter --private --clone \
+  --description "<description>"
 cd <name>
 git log --oneline -1
 ```
+
+If the user gave no description, leave out `--description`.
 
 If `git log` reports that the branch has no commits, GitHub hadn't finished copying the template.
 Run `git pull origin main`, then `git log --oneline -1` again. Retry the pull up to two times. If
@@ -119,6 +131,12 @@ Then confirm that nothing is left. This command must print nothing:
 rg --hidden -g '!.git' -g '!SETUP.md' 'cloudflare-starter|Cloudflare Starter' \
   | rg -v 'mckalexee/cloudflare-starter'
 ```
+
+If the project keeps the MCP endpoint and the user gave a description, open
+`src/mcp/instructions.ts` and replace the first sentence of `INSTRUCTIONS`,
+`This server is a starting point for an MCP server on Cloudflare Workers.`, with a sentence built
+from the description, such as `This server tracks support requests for the Acme team.` Keep the
+rest of the text as it is.
 
 ### 4. Prune and install
 
@@ -152,18 +170,20 @@ already equals `date +%F`, nothing changes.
 
 ### 7. Create the KV namespaces (MCP endpoint kept)
 
-Production and Previews get separate namespaces, so Preview grants never reach production. Don't
-pass `--preview`: that flag creates a namespace for `wrangler dev`, not for Worker Previews.
+The `OAUTH_KV` binding holds the MCP tools' state and, with GitHub OAuth, the OAuth grants and
+tokens. Production and Previews get separate namespaces, so Preview data never reaches
+production. Don't pass `--preview`: that flag creates a namespace for `wrangler dev`, not for
+Worker Previews.
 
 ```sh
-CLOUDFLARE_ACCOUNT_ID=<account-id> pnpm exec wrangler kv namespace create <name>-oauth
-CLOUDFLARE_ACCOUNT_ID=<account-id> pnpm exec wrangler kv namespace create <name>-oauth-preview
+CLOUDFLARE_ACCOUNT_ID=<account-id> pnpm exec wrangler kv namespace create <name>-kv
+CLOUDFLARE_ACCOUNT_ID=<account-id> pnpm exec wrangler kv namespace create <name>-kv-preview
 CLOUDFLARE_ACCOUNT_ID=<account-id> pnpm exec wrangler kv namespace list \
-  | jq -r '.[] | select(.title == "<name>-oauth" or .title == "<name>-oauth-preview") | "\(.title) \(.id)"'
+  | jq -r '.[] | select(.title == "<name>-kv" or .title == "<name>-kv-preview") | "\(.title) \(.id)"'
 ```
 
-In `wrangler.jsonc`, replace `REPLACE_WITH_KV_ID` with the ID of `<name>-oauth` and
-`REPLACE_WITH_PREVIEW_KV_ID` with the ID of `<name>-oauth-preview`.
+In `wrangler.jsonc`, replace `REPLACE_WITH_KV_ID` with the ID of `<name>-kv` and
+`REPLACE_WITH_PREVIEW_KV_ID` with the ID of `<name>-kv-preview`.
 
 ### 8. Set the vars
 
@@ -184,7 +204,7 @@ under `previews.vars` for Previews. Set both unless the list says otherwise.
 
 - `APP_NAME`: step 3 already set it to the display name. Confirm both places.
 - `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` (private web app): leave them empty for now. Step 12 sets
-  them.
+  them on a custom domain, and step 14 on `workers.dev`.
 
 A public web-app-only project changes no vars in this step.
 
@@ -257,6 +277,11 @@ A web-app-only project has no secrets and skips this step.
 
 ### 12. Create the Cloudflare Access apps (private web app)
 
+Ask the user for the team domain, such as `myteam.cloudflareaccess.com`. The Zero Trust dashboard
+shows it under **Settings** > **Team name and domain**.
+
+#### Custom domain
+
 [docs/web.md](docs/web.md#cloudflare-access-applications) has the layouts and the API payloads.
 Pick the layout:
 
@@ -270,11 +295,10 @@ instead, the user creates an API token with the **Access: Apps and Policies Writ
 The token never enters the conversation. Either the user exports it as `ACCESS_API_TOKEN` in the
 shell that runs your commands, or the user runs the `curl` loop from `docs/web.md` in their own
 terminal and tells you the `aud` values that it prints. Use the allowed emails or email domain
-from the inputs in the allow policy. Create the bypass application first, so its paths are never
-blocked.
-
-Ask the user for the team domain, such as `myteam.cloudflareaccess.com`. The Zero Trust dashboard
-shows it under **Settings** > **Team name and domain**.
+from the inputs in the allow policy. Write the payload files to a temporary directory from
+`mktemp -d`, never to the project folder, because step 15 commits every file there and the allow
+policy holds email addresses. If the user runs the loop, tell them to set `payloads` to that
+directory first. Create the bypass application first, so its paths are never blocked.
 
 Then set the vars in `wrangler.jsonc`, in both `vars` and `previews.vars`:
 
@@ -285,6 +309,13 @@ Then set the vars in `wrangler.jsonc`, in both `vars` and `previews.vars`:
 Previews don't match the hostname application, so private pages on a Preview answer 403 while
 public pages and MCP keep working. [docs/web.md](docs/web.md#access-on-previews) describes how to
 open private pages on Previews.
+
+#### `workers.dev` hostname (web app only)
+
+A self-hosted application needs a hostname on a zone in the user's account, so protect the
+Worker itself instead, as [docs/web.md](docs/web.md#web-app-only) describes. The Worker doesn't
+exist until step 14 creates it, so step 14 turns on Access and sets the vars. Keep the team
+domain for that step.
 
 ### 13. Verify locally
 
@@ -305,9 +336,10 @@ Which parts of this step apply depends on the halves:
 
 - MCP endpoint kept: the Worker secrets for production and for Previews, the API token, and the
   GitHub secrets, variables, and environments.
-- Web app only: creating the Worker, the API token, and the GitHub secrets, variables, and
-  environments. `DEPLOY_ENABLED` and the `preview` environment apply to a web-app-only project
-  too, because its pull requests get Previews of the web app.
+- Web app only: creating the Worker, Worker-level Access for a private web app on `workers.dev`,
+  the API token, and the GitHub secrets, variables, and environments. `DEPLOY_ENABLED` and the
+  `preview` environment apply to a web-app-only project too, because its pull requests get
+  Previews of the web app.
 
 #### Create the Worker (web app only)
 
@@ -319,6 +351,22 @@ CLOUDFLARE_ACCOUNT_ID=<account-id> pnpm run deploy
 ```
 
 Use `pnpm run deploy`, not `pnpm deploy`, which is a built-in pnpm command.
+
+#### Turn on Access for the Worker (private web app on `workers.dev`)
+
+Ask the user to protect the Worker from **Workers & Pages** > `<name>` > **Access**, with a policy
+that allows the emails or email domain from the inputs. The Access application covers every path
+on the Worker's hostnames and its Previews. Then ask the user for that application's Application
+Audience (AUD) tag, which the dashboard lists under **Zero Trust** > **Access controls** >
+**Applications**.
+
+Set the vars in `wrangler.jsonc`, in both `vars` and `previews.vars`:
+
+- `ACCESS_TEAM_DOMAIN`: the team domain from step 12.
+- `ACCESS_AUD`: the AUD tag.
+
+Until step 15 deploys these vars, the Worker treats the site as public, and Access alone guards
+it.
 
 #### Worker secrets for production (MCP endpoint kept)
 
@@ -385,12 +433,17 @@ Ask the user to create an account-owned API token in the dashboard under **Manag
 
 #### GitHub secrets, variables, and environments
 
-Ask the user to run these in their own terminal from the project folder, so the token never
-appears in your conversation. Each command prompts for the value:
+Ask the user to run this in their own terminal from the project folder, so the token never
+appears in your conversation. The command prompts for the value:
 
 ```sh
 gh secret set CLOUDFLARE_API_TOKEN
-gh secret set CLOUDFLARE_ACCOUNT_ID
+```
+
+The account ID isn't a secret, so set it yourself:
+
+```sh
+gh secret set CLOUDFLARE_ACCOUNT_ID --body <account-id>
 ```
 
 The `production` and `preview` environments are optional. Create them:
@@ -409,6 +462,9 @@ Then set the variables:
 gh variable set HEALTHCHECK_URL --body "https://<host>"
 gh variable set DEPLOY_ENABLED --body true
 ```
+
+For a private web app on `workers.dev`, leave out `HEALTHCHECK_URL`. Access answers `/healthz`
+there instead of the Worker, so the deploy workflow's health check can't reach it.
 
 Confirm with `gh secret list` that both secrets exist before you continue.
 
@@ -434,7 +490,8 @@ When the run succeeds, check the live Worker:
 curl -fsS https://<host>/healthz
 ```
 
-It returns `{"ok":true}`. With GitHub OAuth, also check sign-in discovery:
+It returns `{"ok":true}`. For a private web app on `workers.dev`, Access answers instead, so skip
+this check. With GitHub OAuth, also check sign-in discovery:
 
 ```sh
 curl -sS -o /dev/null -D - -X POST -H 'content-type: application/json' --data '{}' https://<host>/mcp
@@ -467,8 +524,13 @@ claude mcp add --transport http <name> https://<host>/mcp
 In bearer mode, use a client that sends a fixed header, such as Claude Code:
 
 ```sh
-claude mcp add --transport http <name> https://<host>/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http <name> https://<host>/mcp \
+  --header "Authorization: Bearer $(grep '^MCP_BEARER_TOKEN=' .dev.vars | cut -d= -f2-)"
 ```
+
+Ask the user to run it in their own terminal from the project folder, so the token never appears
+in your conversation. The shell reads the token from `.dev.vars`, so it also stays out of the
+typed command and the shell history.
 
 The tool returns the message it was sent. If sign-in ends with `access_denied`, the GitHub
 account isn't in `ALLOWED_GITHUB_LOGINS`. A web-app-only project skips this step.
@@ -502,10 +564,12 @@ it again.
 
 Report each item as done, skipped with the reason, or failed with the error:
 
-- Repository: `https://github.com/<owner>/<name>`, private, created from the template.
+- Repository: `https://github.com/<owner>/<name>`, private, created from the template, and its
+  description if the user gave one.
 - Halves kept and the prune commands run.
 - MCP sign-in mode, the allowed GitHub accounts, and whether Previews support OAuth.
-- Web access: public, or private with the Access app names and who may sign in.
+- Web access: public, or private with the Access app names, or Worker-level Access on
+  `workers.dev`, and who may sign in.
 - Hostname and the MCP URL, `https://<host>/mcp`.
 - KV namespace IDs for production and Previews.
 - Worker secrets set for production, and for Previews if any.

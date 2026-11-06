@@ -1,8 +1,8 @@
 # Deploy
 
 This page covers how the Worker gets its secrets, how pull request Previews work, the GitHub
-Actions setup, custom domains, the Cloudflare API token, Renovate, observability, and the build
-output that Wrangler deploys.
+Actions setup, rollbacks, custom domains, the Cloudflare API token, Renovate, observability, and
+the build output that Wrangler deploys.
 
 ## Build output
 
@@ -21,8 +21,8 @@ the configuration without an account. It's the last step of `pnpm verify`.
 
 ## Worker secrets
 
-`secrets.required` in `wrangler.jsonc` lists the secrets that the Worker needs. It does three
-things:
+List every secret that the Worker needs in `secrets.required` in `wrangler.jsonc`. The list does
+three things:
 
 - `wrangler dev` and `pnpm dev` load only the listed keys from `.dev.vars`. Any other key in that
   file is ignored, and a `.dev.vars` entry can't override a var.
@@ -63,8 +63,8 @@ Previews inherit nothing from production:
 
 - **Vars and bindings:** the `previews` block in `wrangler.jsonc` declares them again. A binding
   that the code uses but the block lacks can fail the Preview with error 1101.
-- **Secrets:** Previews ignore `secrets.required` and never read production secrets. A Preview
-  gets its secrets from three places:
+- **Secrets:** Previews never read production secrets, and `secrets.required` doesn't apply to
+  them. A Preview gets its secrets from three places:
   - The Preview base config, which every new Preview copies when it's created. Set it with
     `wrangler preview base-config secret put <KEY>` or `wrangler preview base-config secret bulk
     <file>`. A later change to the base config reaches only new Previews.
@@ -117,11 +117,11 @@ in the base config with `wrangler preview base-config secret put MCP_BEARER_TOKE
 
 ## GitHub Actions
 
-| Workflow      | Runs on                                                  | Does                                                                                      |
-| ------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `ci.yml`      | Every pull request, and as the first job of `deploy.yml` | `pnpm verify`, the prune variants while the template's setup files remain, and actionlint |
-| `preview.yml` | Pull requests opened, updated, reopened, or closed       | Deploys, checks, and comments a Preview, and deletes it on close                          |
-| `deploy.yml`  | Push to `main`, or a manual run                          | CI, then `pnpm build` and `wrangler deploy`, then an optional health check                |
+| Workflow      | Runs on                                                  | Does                                                                           |
+| ------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `ci.yml`      | Every pull request, and as the first job of `deploy.yml` | The jobs that its header comment lists, including `pnpm verify` and actionlint |
+| `preview.yml` | Pull requests opened, updated, reopened, or closed       | Deploys, checks, and comments a Preview, and deletes it on close               |
+| `deploy.yml`  | Push to `main`, or a manual run                          | CI, then `pnpm build` and `wrangler deploy`, then an optional health check     |
 
 Nothing deploys until the repository variable `DEPLOY_ENABLED` is `true`. Until then, the deploy
 and Preview jobs are skipped, so the template and a new project never deploy before their secrets
@@ -135,15 +135,29 @@ The workflows read these secrets and variables:
 | `CLOUDFLARE_API_TOKEN`         | Secret   | `deploy.yml`, `preview.yml` | The API token that Wrangler uses.                                                                   |
 | `CLOUDFLARE_ACCOUNT_ID`        | Secret   | `deploy.yml`, `preview.yml` | The account to deploy to.                                                                           |
 | `HEALTHCHECK_URL`              | Variable | `deploy.yml`                | Optional. The Worker's base URL without a trailing slash. The job checks `/healthz` after a deploy. |
-| `PREVIEW_GITHUB_CLIENT_ID`     | Secret   | `preview.yml`               | Optional. Passed to Previews as `GITHUB_CLIENT_ID`.                                                 |
-| `PREVIEW_GITHUB_CLIENT_SECRET` | Secret   | `preview.yml`               | Optional. Passed to Previews as `GITHUB_CLIENT_SECRET`.                                             |
-| `PREVIEW_COOKIE_SECRET`        | Secret   | `preview.yml`               | Optional. Passed to Previews as `COOKIE_SECRET`.                                                    |
+| `PREVIEW_GITHUB_CLIENT_ID`     | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `GITHUB_CLIENT_ID`.                                                 |
+| `PREVIEW_GITHUB_CLIENT_SECRET` | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `GITHUB_CLIENT_SECRET`.                                             |
+| `PREVIEW_COOKIE_SECRET`        | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `COOKIE_SECRET`.                                                    |
 | `PREVIEW_MCP_BEARER_TOKEN`     | Secret   | `preview.yml`, bearer mode  | Optional, after you add the Preview secrets step for bearer mode. Passed as `MCP_BEARER_TOKEN`.     |
 
 GitHub reserves the `GITHUB_` prefix for its own secrets, which is why the Preview secrets carry
 a `PREVIEW_` prefix. Set the secrets in the repository, or in the `production` and `preview`
 environments that the deploy and Preview jobs use. A Preview secret that isn't set in GitHub
 comes from the base config or from the previous deployment of the same Preview.
+
+## Roll back
+
+`deploy.yml` tags each Worker version with the short SHA of the commit it deployed, so every
+version maps to a commit. To return production to an earlier version, find its ID and roll back:
+
+```sh
+pnpm exec wrangler deployments list
+pnpm exec wrangler versions list
+pnpm exec wrangler rollback <version-id>
+```
+
+A rollback doesn't change `main`, so the next push to `main` deploys the current code again. To
+keep the earlier code, revert the commit on `main`.
 
 ## Cloudflare API token
 
@@ -209,28 +223,16 @@ to `localhost`.
 
 ## Renovate
 
-`renovate.json5` configures the Renovate GitHub app, which is free for public and private
-repositories. Install it from <https://github.com/apps/renovate> on the repository. Renovate then:
+`renovate.json5` configures the Renovate GitHub app, and its comments explain each rule. Install
+the app from <https://github.com/apps/renovate> on the repository. It's free for public and
+private repositories.
 
-- Opens update pull requests before 6 AM on Mondays, at most five at a time, and refreshes the
-  lockfile on the same schedule.
-- Pins exact versions, matching the exact pins in `package.json`.
-- Merges patch updates on its own once CI passes.
-- Groups updates: `cloudflare` (`wrangler` and `@cloudflare/*`), `oxc` (`oxlint`, `oxfmt`, and
-  `oxlint-tsgolint`), `mcp` (`agents` and `@modelcontextprotocol/*`), and `react-router`.
-- Never merges the `mcp` group on its own, because `agents` requires an exact version of the MCP
-  SDK and a person reviews each update.
-- Keeps `@types/node` below 25, on the Node.js major in `.node-version`.
-- Moves the action versions in `.github/workflows` through the `github-actions` manager that
-  `config:recommended` turns on.
-
-`minimumReleaseAge: "3 days"` makes Renovate wait three days after a release before it proposes
-it. pnpm 12 also enforces a minimum release age: by default, `minimumReleaseAge` is 1440 minutes
-(one day), in a non-strict mode that falls back to a younger version when no older one matches.
-A frozen install, as in CI, rejects a lockfile entry younger than the limit. Renovate's longer
-wait means an update pull request never asks pnpm for a version younger than its limit. `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` exempts a package, or one version
-of it such as `- wrangler@4.158.0`, from the age check. Remove a version entry once that version
-is older than the limit.
+Renovate's three-day wait exists because of pnpm's own minimum release age. pnpm 12 sets
+`minimumReleaseAge` to 1440 minutes (one day) by default, in a non-strict mode that falls back to
+a younger version when no older one matches. A frozen install, as in CI, rejects a lockfile entry
+younger than the limit, so a version that installs locally can still fail CI. To allow one,
+add it to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`, such as `- wrangler@4.158.0`, and
+remove the entry once that version is older than the limit.
 
 `pnpm-workspace.yaml` also holds `allowBuilds`, which decides whose install scripts run. It allows
 `esbuild` and `workerd`, and sets `core-js-pure: false` to block that package's script.
@@ -259,7 +261,6 @@ page:
 - **D1:** Previews that bind the same `database_id` share rows. Bind Previews to a staging
   database under `previews.d1_databases`, and apply migrations to it once, because every Preview
   shares it.
-- **KV and R2:** shared unless the `previews` block binds a different namespace or bucket, as this
-  template does for `OAUTH_KV`.
+- **KV and R2:** shared unless the `previews` block binds a different namespace or bucket.
 
 Add each new binding to the [binding checklist](../AGENTS.md#add-a-binding-var-or-secret).

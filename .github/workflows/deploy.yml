@@ -8,6 +8,9 @@
 #   `production` environment.
 # - Optional variable `HEALTHCHECK_URL`, the Worker's base URL without a trailing slash, such as
 #   `https://example.com`. When it's set, the job checks `/healthz` after the deploy.
+# @starter:oauth
+#   It also checks that an unauthenticated `POST /mcp` gets the OAuth sign-in challenge.
+# @starter:end
 #
 # The Worker's own secrets live on the Worker, not here. Upload them with `wrangler secret bulk`.
 name: Deploy
@@ -73,15 +76,24 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The version tag maps each Worker version to its commit, for `wrangler versions list` and
+      # rollbacks.
+      - name: Get the short commit SHA
+        id: commit
+        run: echo "short-sha=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
       # With no `wranglerVersion`, the action runs the Wrangler from package.json, which is the
-      # version CI tested.
+      # version CI tested. The message is fixed text, because a commit message interpolated into
+      # the command could inject arguments.
       - name: Deploy
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: pnpm
-          command: deploy
+          command: >-
+            deploy --tag ${{ steps.commit.outputs.short-sha }}
+            --message "Deploy from GitHub Actions run ${{ github.run_id }}"
 
       - name: Check /healthz
         if: vars.HEALTHCHECK_URL != ''
@@ -91,3 +103,25 @@ jobs:
           # A new version can take a few seconds to reach every location, so retry briefly.
           curl -fsS --max-time 10 --retry 6 --retry-delay 5 --retry-all-errors \
             "${HEALTHCHECK_URL%/}/healthz"
+
+      # @starter:oauth
+      # An unauthenticated MCP request must get the OAuth challenge that points clients at the
+      # protected resource metadata, or no client can sign in.
+      - name: Check the MCP sign-in challenge
+        if: vars.HEALTHCHECK_URL != ''
+        env:
+          HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
+        run: |
+          url="${HEALTHCHECK_URL%/}"
+          headers="$RUNNER_TEMP/mcp-headers.txt"
+          status=$(curl -sS --max-time 10 -o /dev/null -D "$headers" -w '%{http_code}' \
+            -X POST -H 'content-type: application/json' --data '{}' "$url/mcp")
+          if [ "$status" != 401 ]; then
+            echo "::error title=Unexpected MCP status::POST $url/mcp returned $status instead of 401."
+            exit 1
+          fi
+          if ! grep -qi '^www-authenticate:.*resource_metadata' "$headers"; then
+            echo "::error title=No resource metadata::The 401 from $url/mcp has no WWW-Authenticate header with resource_metadata."
+            exit 1
+          fi
+      # @starter:end

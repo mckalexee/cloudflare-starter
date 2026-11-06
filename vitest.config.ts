@@ -48,7 +48,7 @@ export default defineConfig({
   },
   // @starter:end
   test: {
-    // The first request in a test file loads the MCP SDK and the OAuth library, which can take
+    // The first request in a test file loads the Worker and its dependencies, which can take
     // longer than the default five seconds on a busy machine.
     testTimeout: 15_000,
     coverage: { provider: "istanbul", include: ["src/**"] },

@@ -2,8 +2,9 @@
 #
 # - `verify` runs `pnpm verify`, the definition of done: format, lint, typecheck, tests, build,
 #   and a deploy dry run.
-# - `prune` runs `scripts/prune.ts` for each project variant and verifies the result, so a stale
-#   prune list fails here instead of in a new project.
+# - `prune` runs `scripts/prune.ts` for each project variant, verifies the result, and checks it
+#   again after `--finish`, so a stale prune list fails here instead of in a new project. It runs
+#   only in the template repository.
 # - `workflows` lints the workflow files with actionlint.
 #
 # Needs no secrets or variables.
@@ -49,14 +50,18 @@ jobs:
         run: pnpm verify
 
   prune:
-    name: Prune to ${{ matrix.variant }}
+    name: Prune to ${{ matrix.variants }}
+    # A project created from the template is already pruned, so this job would fail there.
+    if: github.repository == 'mckalexee/cloudflare-starter'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       # Report every variant, not only the first one that fails.
       fail-fast: false
       matrix:
-        variant: [mcp-only, app-only, bearer]
+        # Each entry lists the variants to apply in order. An MCP-only project in bearer mode runs
+        # `mcp-only` and then `bearer`.
+        variants: [mcp-only, app-only, bearer, mcp-only bearer]
     steps:
       - uses: actions/checkout@v7
 
@@ -70,8 +75,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The script takes one variant per run.
       - name: Prune
-        run: node scripts/prune.ts ${{ matrix.variant }}
+        env:
+          VARIANTS: ${{ matrix.variants }}
+        run: |
+          for variant in $VARIANTS; do
+            node scripts/prune.ts "$variant"
+          done
 
       # Pruning removes dependencies from package.json, so the lockfile has to change.
       - name: Reinstall the pruned dependencies
@@ -79,6 +90,14 @@ jobs:
 
       - name: Verify
         run: pnpm verify
+
+      - name: Finish the setup
+        run: node scripts/prune.ts --finish
+
+      # `--finish` removes only marker lines and setup files, so the tests and the build don't need
+      # to run again.
+      - name: Check the finished project
+        run: pnpm fmt:check && pnpm lint && pnpm typecheck
 
   workflows:
     name: Lint the workflow files

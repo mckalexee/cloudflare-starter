@@ -1,8 +1,8 @@
 # Deploy
 
 This page covers how the Worker gets its secrets, how pull request Previews work, the GitHub
-Actions setup, custom domains, the Cloudflare API token, Renovate, observability, and the build
-output that Wrangler deploys.
+Actions setup, rollbacks, custom domains, the Cloudflare API token, Renovate, observability, and
+the build output that Wrangler deploys.
 
 ## Build output
 
@@ -145,6 +145,20 @@ a `PREVIEW_` prefix. Set the secrets in the repository, or in the `production` a
 environments that the deploy and Preview jobs use. A Preview secret that isn't set in GitHub
 comes from the base config or from the previous deployment of the same Preview.
 
+## Roll back
+
+`deploy.yml` tags each Worker version with the short SHA of the commit it deployed, so every
+version maps to a commit. To return production to an earlier version, find its ID and roll back:
+
+```sh
+pnpm exec wrangler deployments list
+pnpm exec wrangler versions list
+pnpm exec wrangler rollback <version-id>
+```
+
+A rollback doesn't change `main`, so the next push to `main` deploys the current code again. To
+keep the earlier code, revert the commit on `main`.
+
 ## Cloudflare API token
 
 Create an account-owned token under **Manage Account** > **Account API Tokens**, scoped to the one
@@ -209,28 +223,16 @@ to `localhost`.
 
 ## Renovate
 
-`renovate.json5` configures the Renovate GitHub app, which is free for public and private
-repositories. Install it from <https://github.com/apps/renovate> on the repository. Renovate then:
+`renovate.json5` configures the Renovate GitHub app, and its comments explain each rule. Install
+the app from <https://github.com/apps/renovate> on the repository. It's free for public and
+private repositories.
 
-- Opens update pull requests before 6 AM on Mondays, at most five at a time, and refreshes the
-  lockfile on the same schedule.
-- Pins exact versions, matching the exact pins in `package.json`.
-- Merges patch updates on its own once CI passes.
-- Groups updates: `cloudflare` (`wrangler` and `@cloudflare/*`), `oxc` (`oxlint`, `oxfmt`, and
-  `oxlint-tsgolint`), `mcp` (`agents` and `@modelcontextprotocol/*`), and `react-router`.
-- Never merges the `mcp` group on its own, because `agents` requires an exact version of the MCP
-  SDK and a person reviews each update.
-- Keeps `@types/node` below 25, on the Node.js major in `.node-version`.
-- Moves the action versions in `.github/workflows` through the `github-actions` manager that
-  `config:recommended` turns on.
-
-`minimumReleaseAge: "3 days"` makes Renovate wait three days after a release before it proposes
-it. pnpm 12 also enforces a minimum release age: by default, `minimumReleaseAge` is 1440 minutes
-(one day), in a non-strict mode that falls back to a younger version when no older one matches.
-A frozen install, as in CI, rejects a lockfile entry younger than the limit. Renovate's longer
-wait means an update pull request never asks pnpm for a version younger than its limit. `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` exempts a package, or one version
-of it such as `- wrangler@4.158.0`, from the age check. Remove a version entry once that version
-is older than the limit.
+Renovate's three-day wait exists because of pnpm's own minimum release age. pnpm 12 sets
+`minimumReleaseAge` to 1440 minutes (one day) by default, in a non-strict mode that falls back to
+a younger version when no older one matches. A frozen install, as in CI, rejects a lockfile entry
+younger than the limit, so a version that installs locally can still fail CI. To allow one,
+add it to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`, such as `- wrangler@4.158.0`, and
+remove the entry once that version is older than the limit.
 
 `pnpm-workspace.yaml` also holds `allowBuilds`, which decides whose install scripts run. It allows
 `esbuild` and `workerd`, and sets `core-js-pure: false` to block that package's script.

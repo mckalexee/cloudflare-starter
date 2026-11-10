@@ -367,8 +367,9 @@ Set the vars in `wrangler.jsonc`, in both `vars` and `previews.vars`:
 - `ACCESS_TEAM_DOMAIN`: the team domain from step 12.
 - `ACCESS_AUD`: the AUD tag.
 
-Until step 15 deploys these vars, the Worker treats the site as public, and Access alone guards
-it.
+Until step 15 deploys these vars, Access alone guards the site. A version deployed before then
+answers private routes with a 500 response, because `WEB_ACCESS` is `private` while the Access
+vars are empty.
 
 #### Worker secrets for production (MCP endpoint kept)
 

@@ -12,8 +12,8 @@ for you, how to configure GitHub, and how to swap GitHub for another identity pr
 
 <!-- @starter:access -->
 
-[Cloudflare Access sign-in](#cloudflare-access-sign-in) is another sign-in mode, where Cloudflare
-Access signs MCP clients in and the Worker needs no secrets.
+[Cloudflare Access sign-in](#cloudflare-access-sign-in) is an alternative mode that this project
+can switch to, where Cloudflare Access signs MCP clients in and the Worker needs no secrets.
 
 <!-- @starter:end -->
 
@@ -336,6 +336,20 @@ version) can be `*`, or a shorter list for defense in depth.
 
 ## Cloudflare Access sign-in
 
+<!-- @starter:end -->
+
+<!-- @starter:access -->
+
+This project doesn't use this mode yet, so nothing mounts `accessRoutes`. To switch, mount the
+routes in `src/http/index.ts` with `app.route("/", accessRoutes)`, make `src/worker.ts` export the
+Hono app's handler with `export default appHandler;`, and delete the code that only the current
+mode uses. Then create the Access application and set the vars. The rest of this section
+describes the mode as it works once it's on.
+
+<!-- @starter:end -->
+
+<!-- @starter:access -->
+
 In this mode, Cloudflare Access is the authorization server for `/mcp`, through its Managed OAuth
 feature, which is in beta. An MCP client registers with Access, the person signs in on the Access
 login page, and the client sends the token from Access with each request. Access checks the token
@@ -349,18 +363,6 @@ header. The Worker only verifies that header, so it needs no GitHub app and no s
 | `/mcp`                                      | Verifies the identity that Access forwards, and serves MCP as that person.            |
 | `/.well-known/oauth-protected-resource/mcp` | Protected resource metadata (RFC 9728) that names Access as the authorization server. |
 | `/.well-known/oauth-protected-resource`     | The same document at the URL without the path suffix.                                 |
-
-<!-- @starter:end -->
-
-<!-- @starter:access -->
-
-### Turn on Access sign-in
-
-This project serves `/mcp` with another sign-in mode, so nothing mounts `accessRoutes`. To switch,
-mount the routes in `src/http/index.ts` with `app.route("/", accessRoutes)`, make `src/worker.ts`
-export the Hono app's handler with `export default appHandler;`, and delete the code that only the
-old mode uses. Then create the Access application and set the vars, as the rest of this section
-describes.
 
 <!-- @starter:end -->
 
@@ -392,11 +394,16 @@ connect in this mode.
 
 ### Access layouts
 
-Every layout has an allow application with Managed OAuth turned on. Pick the layout that fits the
-project:
+Every layout has an allow application with Managed OAuth turned on.
 
-- **Host layout.** The allow application covers the whole hostname. Use it for MCP alone, or for
-  MCP next to a private web app, where one application and one policy cover both. Access serves
+<!-- @starter:end -->
+
+<!-- @starter:web -->
+
+Pick the layout that fits the web app:
+
+- **Host layout.** The allow application covers the whole hostname. Use it for MCP next to a
+  private web app, where one application and one policy cover both. Access serves
   `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/mcp`, and
   `/.well-known/oauth-authorization-server` itself. Add a bypass application on `/healthz`, as
   `bypass-app.json` shows, so the deploy workflow's health check reaches the Worker.
@@ -404,6 +411,10 @@ project:
   web app. Access doesn't serve the metadata documents in this layout, so those requests reach the
   Worker, which answers them. Without them, the Claude Code sign-in fails with a `404`. This layout
   needs no bypass application, because `/healthz` is outside it.
+
+<!-- @starter:end -->
+
+<!-- @starter:access -->
 
 `allow-app.json` for the host layout:
 
@@ -440,7 +451,15 @@ project:
 }
 ```
 
+<!-- @starter:end -->
+
+<!-- @starter:web -->
+
 For the path layout, set `domain` to `<host>/mcp` and the destination's `uri` to `<host>/mcp`.
+
+<!-- @starter:end -->
+
+<!-- @starter:access -->
 
 These Managed OAuth settings are the ones that work with Claude Code and claude.ai:
 
@@ -485,8 +504,9 @@ Under `pnpm dev`, Access doesn't run, so the dev server fakes `ctx.access` from 
 block in `wrangler.jsonc`, and `/mcp` serves its identity. Set `access.dev.aud` to the same value
 as `ACCESS_AUD`, or local requests have no identity.
 
-Access doesn't cover Preview hostnames, so on a Preview, `/mcp` answers `401` and MCP clients
-can't sign in. The rest of the Preview works.
+The Access application doesn't cover Preview hostnames, so on a Preview, the Worker answers `/mcp`
+with `401` and MCP clients can't sign in. If Worker-level Access protects the Previews, Access
+answers `/mcp` instead of the Worker. Either way, MCP sign-in doesn't work on a Preview.
 
 <!-- @starter:end -->
 

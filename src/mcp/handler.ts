@@ -22,7 +22,9 @@ export const MCP_ROUTE = "/mcp";
 // Props arrive as an untyped record, so they're checked here once instead of in every tool. Extra
 // fields are dropped, so anything else in the props reaches tool code only when you add it here.
 // `id` is the stable key for per-user data. Keep `accessToken` out of logs and tool results.
-// A sign-in mode without token scopes, such as bearer mode, sets `scopes` in its props.
+// A sign-in mode without token scopes, such as bearer mode, sets `scopes` in its props. Props stored
+// before `id` became a string carry a number, which is turned into the same text, so those
+// sessions keep working and keep their per-user keys.
 // @starter:oauth
 //
 // With GitHub OAuth, the props come from the grant. `id` is the GitHub account ID as text. `name`
@@ -33,7 +35,7 @@ export const MCP_ROUTE = "/mcp";
 // token carries the scopes it was issued for, which a token request can narrow.
 // @starter:end
 const propsSchema = z.object({
-  id: z.string(),
+  id: z.union([z.string(), z.number().int().transform(String)]),
   login: z.string(),
   name: z.string(),
   scopes: z.array(z.string()).optional(),

@@ -46,7 +46,13 @@ type SignIn = "github" | "bearer" | "access";
 type Selection = { parts: ReadonlySet<Part>; signIn: SignIn | undefined };
 
 // One piece of a selection's changes. A selection applies every fragment that it needs in one run.
-type Fragment = "no-web" | "no-mcp" | "bearer" | "access-sign-in" | "no-access";
+type Fragment =
+  | "no-web"
+  | "no-mcp"
+  | "bearer"
+  | "access-sign-in"
+  | "access-without-web"
+  | "no-access";
 
 // A path to delete. With `keep`, the path is a directory and everything in it except the listed
 // paths is deleted.
@@ -156,6 +162,8 @@ const BEARER_DEV_VARS = `# Token that MCP clients send as \`Authorization: Beare
 # \`openssl rand -hex 32\`.
 MCP_BEARER_TOKEN=`;
 
+const BEARER_AUTH_INTRO = `MCP clients authenticate with one static bearer token, as [Bearer mode](#bearer-mode) describes.`;
+
 // Bearer mode has no consent page and no GitHub account. These replace the OAuth wording in the
 // files that bearer mode keeps.
 const BEARER_SCOPE_DESCRIPTIONS = `  profile: "See your login and name.",`;
@@ -223,9 +231,11 @@ block in \`wrangler.jsonc\`. Set \`ACCESS_TEAM_DOMAIN\` and \`ACCESS_AUD\` under
 const ACCESS_README_ENDPOINTS = `- \`http://localhost:5173/.well-known/oauth-protected-resource/mcp\`: protected resource metadata,
   which names Cloudflare Access as the authorization server.
 - \`http://localhost:5173/.well-known/oauth-protected-resource\`: the same document.`;
-const ACCESS_README_CLIENT = `Each client opens a browser for the Cloudflare Access login. The Access application's policy
-decides who may connect. [docs/auth.md](docs/auth.md#cloudflare-access-sign-in) describes the
-application.
+const ACCESS_README_CLIENT = `Against a deployed URL, each client opens a browser for the Cloudflare Access login, and the
+Access application's policy decides who may connect.
+[docs/auth.md](docs/auth.md#cloudflare-access-sign-in) describes the application. Against
+\`pnpm dev\`, there's no login: requests to \`http://localhost:5173/mcp\` use the \`access.dev\`
+identity from \`wrangler.jsonc\`.
 
 - **claude.ai and Claude Desktop:** go to **Settings** > **Connectors** > **Add custom
   connector**, and enter the URL. claude.ai connects from Anthropic's servers, so it needs a
@@ -245,8 +255,10 @@ const ACCESS_HOST_CHECK = `\`createMcpApiHandler()\` in \`src/mcp/handler.ts\` c
 \`workers.dev\` by default. To apply the check on the custom domain, pass \`allowedHostnames\` where
 \`src/auth/access.ts\` creates the handler. Run \`pnpm test\` afterward, because the tests send
 requests to \`localhost\`.`;
-const ACCESS_PREVIEW_MCP = `With Cloudflare Access sign-in, a Preview's \`/mcp\` answers \`401\`, because Access doesn't cover
-Preview hostnames, and the Worker serves MCP only to an identity that Access forwards.`;
+const ACCESS_PREVIEW_MCP = `With Cloudflare Access sign-in, MCP sign-in doesn't work on a Preview. The Access application
+doesn't cover Preview hostnames, and the Worker serves MCP only to an identity that Access
+forwards, so the Worker answers \`/mcp\` with \`401\`. If Worker-level Access protects the
+Previews, Access answers \`/mcp\` instead of the Worker.`;
 const ACCESS_CUSTOM_DOMAIN = `With Cloudflare Access sign-in, create the Access application on the custom domain, as
 [auth.md](auth.md#access-layouts) describes.`;
 const ACCESS_WEB_BOTH = `### Both halves
@@ -254,6 +266,14 @@ const ACCESS_WEB_BOTH = `### Both halves
 With Cloudflare Access sign-in, one allow application can cover both halves, as the
 [Access layouts](auth.md#access-layouts) describe. A private web app uses the host layout, and a
 public web app uses the path layout.`;
+const ACCESS_MCP_NO_UPSTREAM_TOKEN = `Bearer mode and Cloudflare Access sign-in have no upstream token, so this tool's GitHub call
+always fails there with "This connection has no GitHub token." In those modes, follow the same
+steps with a handler that uses only its input and this Worker's bindings, as
+\`example_echo_message\` and \`account_record_visit\` do.`;
+const ACCESS_ONLY_LAYOUT = `Use the host layout: the allow application covers the whole hostname. Access serves
+\`/.well-known/oauth-protected-resource\`, \`/.well-known/oauth-protected-resource/mcp\`, and
+\`/.well-known/oauth-authorization-server\` itself. Add a bypass application on \`/healthz\`, as
+\`bypass-app.json\` shows, so the deploy workflow's health check reaches the Worker.`;
 const ACCESS_AUTH_INTRO = `MCP clients sign in through Cloudflare Access. [Bearer mode](#bearer-mode) replaces it with one
 static token for a single user.`;
 
@@ -365,6 +385,11 @@ const FRAGMENTS: Record<Fragment, FragmentSpec> = {
         anchor: "The OAuth provider in `src/auth` guards it",
         content: BEARER_AGENTS_INTRO,
       },
+      {
+        file: "docs/auth.md",
+        anchor: "MCP clients sign in through OAuth.",
+        content: BEARER_AUTH_INTRO,
+      },
       { file: README, anchor: "sign in with GitHub through OAuth", content: BEARER_README_INTRO },
       { file: README, anchor: "**OAuth.**", content: BEARER_README_FEATURE },
       { file: README, anchor: "set up GitHub OAuth before", content: BEARER_README_LOCAL },
@@ -446,10 +471,35 @@ const FRAGMENTS: Record<Fragment, FragmentSpec> = {
       { file: "docs/web.md", anchor: "### Both halves on one hostname", content: ACCESS_WEB_BOTH },
       { file: "docs/web.md", anchor: "### Both halves on two hostnames", content: "" },
       { file: "docs/web.md", anchor: "also answer on `mcp.example.com`", content: "" },
-      { file: "docs/auth.md", anchor: "is another sign-in mode", content: ACCESS_AUTH_INTRO },
-      { file: "docs/auth.md", anchor: "### Turn on Access sign-in", content: "" },
+      {
+        file: "docs/auth.md",
+        anchor: "is an alternative mode that this project",
+        content: ACCESS_AUTH_INTRO,
+      },
+      { file: "docs/auth.md", anchor: "nothing mounts `accessRoutes`", content: "" },
+      {
+        file: "docs/mcp.md",
+        anchor: "has no upstream token, so this tool's",
+        content: ACCESS_MCP_NO_UPSTREAM_TOKEN,
+      },
     ],
     swapsCover: ["src/worker.ts"],
+  },
+  // Without the web app, Access sign-in has one layout, so the layout choice goes.
+  "access-without-web": {
+    dropKinds: [],
+    paths: [],
+    dependencies: [],
+    dependenciesIfUnused: [],
+    scripts: {},
+    swaps: [
+      {
+        file: "docs/auth.md",
+        anchor: "Pick the layout that fits the web app",
+        content: ACCESS_ONLY_LAYOUT,
+      },
+    ],
+    swapsCover: [],
   },
   // Without the web app and without Access sign-in, nothing checks an Access identity.
   "no-access": {
@@ -501,6 +551,9 @@ function fragmentsFor(selection: Selection): Fragment[] {
   }
   if (selection.signIn === "access") {
     fragments.push("access-sign-in");
+    if (!web) {
+      fragments.push("access-without-web");
+    }
   }
   if (!web && selection.signIn !== "access") {
     fragments.push("no-access");

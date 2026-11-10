@@ -72,6 +72,10 @@ jobs:
             leftovers: oauth
           - prune: mcp-only; bearer
             leftovers: web access oauth
+          - prune: --parts mcp,web --sign-in github
+            leftovers: ""
+          - prune: --parts mcp --sign-in bearer
+            leftovers: web access oauth
           - prune: --parts mcp --sign-in access
             leftovers: web oauth
           - prune: --parts mcp,web --sign-in access
@@ -125,7 +129,7 @@ jobs:
         run: |
           for leftover in $LEFTOVERS; do
             case "$leftover" in
-              web) pattern='(^|[^.])react|src/web|#web/|WEB_ACCESS' ;;
+              web) pattern='(^|[^.])react|src/web|#web/|WEB_ACCESS|web app\b' ;;
               mcp) pattern='mcp|modelcontextprotocol|oauth|src/auth|#auth/' ;;
               access)
                 pattern='src/http/access|#http/access|auth/access\.ts|helpers/access'

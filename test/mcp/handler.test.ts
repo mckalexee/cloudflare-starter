@@ -20,12 +20,18 @@ describe("resolveAuthProps", () => {
     expect(() => resolveAuthProps(undefined, undefined)).toThrow(/no valid auth props/);
   });
 
-  it("throws when the props have no account ID as text", () => {
+  it("throws when the props have no usable account ID", () => {
     expect(() => resolveAuthProps(undefined, { login: "ada", name: "Ada" })).toThrow(
       /no valid auth props/,
     );
-    expect(() => resolveAuthProps(undefined, { id: 1, login: "ada", name: "Ada" })).toThrow(
+    expect(() => resolveAuthProps(undefined, { id: 1.5, login: "ada", name: "Ada" })).toThrow(
       /no valid auth props/,
+    );
+  });
+
+  it("turns a numeric account ID from older props into the same text", () => {
+    expect(resolveAuthProps(undefined, { id: 583231, login: "ada", name: "Ada" }).id).toBe(
+      "583231",
     );
   });
 

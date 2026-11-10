@@ -178,10 +178,14 @@ requests. [testing.md](testing.md) describes the helpers.
 This tool lists the user's GitHub repositories. It adds a scope, calls GitHub with the user's
 token, and returns structured content.
 
+<!-- @starter:mcp -->
+
 Bearer mode has no upstream token, so this tool's GitHub call always fails there with "This
 connection has no GitHub token." In bearer mode, follow the same steps with a handler that uses
 only its input and this Worker's bindings, as `example_echo_message` and `account_record_visit`
 do.
+
+<!-- @starter:end -->
 
 ### 1. Add the scope
 

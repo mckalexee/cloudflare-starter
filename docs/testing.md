@@ -26,12 +26,16 @@ fails and the normal run passes, a test depends on the order the files run in.
 
 - `cloudflareTest({ wrangler: { configPath: "./wrangler.jsonc" } })` loads the Worker's bindings
   and compatibility settings from the same file that production uses.
+- `miniflare.bindings` sets every var to its value in `wrangler.jsonc` and every secret in
+  `secrets.required` to its value in `TEST_SECRETS`, or to an empty string. The plugin reads
+  `.dev.vars`, `.env`, and the process environment over `wrangler.jsonc`, so these bindings keep
+  your local values out of the tests. Give a new secret a value in `TEST_SECRETS` unless the tests
+  expect it to be unset.
 
 <!-- @starter:oauth -->
 
-- `miniflare.bindings` supplies fixed test values for the secrets in `secrets.required`, and sets
-  `MCP_RESOURCE` to `http://localhost:5173/mcp`, so tests never read `.dev.vars`. A new secret
-  needs a value here.
+- `miniflare.bindings` also sets `MCP_RESOURCE` to `http://localhost:5173/mcp`, the origin that
+  tests send requests to.
 
 <!-- @starter:end -->
 

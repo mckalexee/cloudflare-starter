@@ -153,8 +153,13 @@ const VARIANTS: Record<Variant, VariantSpec> = {
         to: "wrangler types --strict-vars=false",
       },
     },
-    // The rule that keeps MCP code apart from the web app means nothing without the web app.
-    swaps: [{ file: AGENTS, anchor: "never import `src/web`", content: "" }],
+    // The rule that keeps MCP code apart from the web app means nothing without the web app. Its
+    // lint override only adds the web app's imports to the root rule, so it goes too.
+    swaps: [
+      { file: AGENTS, anchor: "never import `src/web`", content: "" },
+      { file: "docs/conventions.md", anchor: "never import `src/web`", content: "" },
+      { file: ".oxlintrc.json", anchor: `"files": ["src/mcp/**", "src/auth/**"]`, content: "" },
+    ],
     swapsCover: [],
   },
   "app-only": {

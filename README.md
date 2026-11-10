@@ -80,6 +80,11 @@ groups and pins dependency updates.
 <!-- @starter:web -->
 
 - **Web app:** `react-router`, `react`, `react-dom`, `isbot`
+
+<!-- @starter:end -->
+
+<!-- @starter:access -->
+
 - **Access tokens:** `jose`
 
 <!-- @starter:end -->

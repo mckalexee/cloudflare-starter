@@ -34,8 +34,9 @@ export default function Account({ loaderData }: Route.ComponentProps) {
         </dl>
       ) : (
         <p>
-          This site is public, so nobody is signed in. To require sign-in, protect the site with
-          Cloudflare Access and set <code>ACCESS_TEAM_DOMAIN</code> and <code>ACCESS_AUD</code>.
+          This site is public, and nobody is signed in. To require sign-in, protect the site with
+          Cloudflare Access, set <code>ACCESS_TEAM_DOMAIN</code> and <code>ACCESS_AUD</code>, and
+          set <code>WEB_ACCESS</code> to <code>private</code>.
         </p>
       )}
     </main>

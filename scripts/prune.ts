@@ -1,13 +1,28 @@
 // Turns the template into one project variant, and later removes the template's prune machinery.
-// Run it with `node scripts/prune.ts <mcp-only|app-only|bearer> [--finish]`, or with `--finish`
-// alone for a project that keeps both halves.
+// The setup names the whole selection in one run:
 //
-// A variant deletes the marked blocks of the kinds it drops, replaces the blocks that it swaps for
-// other content, deletes the files that belong only to those kinds, and removes their
+//   node scripts/prune.ts --parts <mcp,web|mcp|web> [--sign-in <github|bearer|access>] [--finish]
+//
+// `--parts` lists the parts to keep, separated by commas. `--sign-in` picks how MCP clients sign
+// in: GitHub OAuth, one static bearer token, or Cloudflare Access. It's required when the MCP
+// endpoint stays and not allowed without it. `--parts mcp,web --sign-in github` keeps the template
+// as it is. The older single-variant form still works, one variant per run:
+//
+//   node scripts/prune.ts <mcp-only|app-only|bearer> [--finish]
+//
+// `mcp-only` keeps the MCP endpoint with GitHub OAuth, `app-only` keeps the web app, and `bearer`
+// keeps both parts in bearer mode. An MCP-only project in bearer mode runs `mcp-only` and then
+// `bearer`. `--finish` alone finishes a project that keeps both parts with GitHub OAuth.
+//
+// A selection deletes the marked blocks of the kinds it drops, replaces the blocks that it swaps
+// for other content, deletes the files that belong only to those kinds, and removes their
 // dependencies from `package.json`. A marker is a comment line that holds only `@starter:mcp`,
-// `@starter:web`, or `@starter:oauth`, such as `// @starter:web` in code or `<!-- @starter:web -->`
-// in Markdown, and a later `@starter:end` line closes the block. Blocks don't nest. `@starter:oauth` blocks belong to the OAuth flow inside the MCP half, so `bearer`
-// drops them, or swaps them for its bearer-token code, and keeps the rest of the MCP half.
+// `@starter:web`, `@starter:oauth`, or `@starter:access`, such as `// @starter:web` in code or
+// `<!-- @starter:web -->` in Markdown, and a later `@starter:end` line closes the block. Blocks
+// don't nest. `@starter:oauth` blocks belong to the OAuth flow inside the MCP part, so bearer mode
+// and Access sign-in drop them, or swap them for their own code, and keep the rest of the MCP part.
+// `@starter:access` blocks belong to the Cloudflare Access identity check, which both the web app
+// and Access sign-in use, so only a selection with neither drops them.
 //
 // `--finish` strips the remaining marker lines and rewrites the `Halves present:` line in
 // `AGENTS.md` to name what's left. It deletes `SETUP.md` and the `README.md` line that points to
@@ -22,8 +37,16 @@
 import { lstatSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-type Kind = "mcp" | "web" | "oauth";
+type Kind = "mcp" | "web" | "oauth" | "access";
 type Variant = "mcp-only" | "app-only" | "bearer";
+type Part = "mcp" | "web";
+type SignIn = "github" | "bearer" | "access";
+
+// The parts to keep and, with the MCP endpoint, how MCP clients sign in.
+type Selection = { parts: ReadonlySet<Part>; signIn: SignIn | undefined };
+
+// One piece of a selection's changes. A selection applies every fragment that it needs in one run.
+type Fragment = "no-web" | "no-mcp" | "bearer" | "access-sign-in" | "no-access";
 
 // A path to delete. With `keep`, the path is a directory and everything in it except the listed
 // paths is deleted.
@@ -31,16 +54,15 @@ type Removal = { path: string; keep?: string[] };
 
 // Replaces a marked block, markers included, with `content`, instead of deleting or keeping it. A
 // swap applies to the one block in `file` whose text contains `anchor`. An empty `content` deletes
-// the block, for text that holds only while a kind that the variant keeps sits next to one that it
-// drops.
+// the block, for text that holds only while a kind that the selection keeps sits next to one that
+// it drops.
 type Swap = { file: string; anchor: string; content: string };
 
 // An edit for `--finish` that markers can't express. `apply` throws an `Error` when the text it
 // expects is missing, so a template change that breaks the edit fails loudly.
 type TextEdit = { file: string; description: string; apply: (text: string) => string };
 
-type VariantSpec = {
-  summary: string;
+type FragmentSpec = {
   dropKinds: Kind[];
   paths: Removal[];
   dependencies: string[];
@@ -49,7 +71,7 @@ type VariantSpec = {
   scripts: Record<string, { from: string; to: string }>;
   swaps: Swap[];
   // Every `mcp` or `oauth` block in these files must match a swap, so OAuth code can't survive in a
-  // variant that replaces it.
+  // selection that replaces it.
   swapsCover: string[];
 };
 
@@ -70,7 +92,9 @@ const SKIP_DIRS = new Set([
 ]);
 const SKIP_FILES = new Set([SELF, "pnpm-lock.yaml", "worker-configuration.d.ts"]);
 const MARKER = /^\s*(?:\/\/|#|<!--)\s*@starter:([a-z]+)\s*(?:-->)?\s*$/;
-const KINDS = new Set<string>(["mcp", "web", "oauth"]);
+const KINDS = new Set<string>(["mcp", "web", "oauth", "access"]);
+const PARTS = new Set<string>(["mcp", "web"]);
+const SIGN_INS = new Set<string>(["github", "bearer", "access"]);
 
 const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 const COLLAPSIBLE_FILE = /\.(?:[cm]?[jt]sx?|json|jsonc|json5)$/;
@@ -88,17 +112,21 @@ const BEARER_WORKER_HANDLER = `export default {
       : appHandler.fetch(request, env, ctx),
 } satisfies ExportedHandler<Env>;`;
 
-// Without the MCP endpoint, the Hono app is the whole Worker. This replaces the OAuth provider's
-// export in `src/worker.ts`.
-const APP_ONLY_WORKER_HANDLER = `export default appHandler;`;
+// The Hono app is the whole Worker without the MCP endpoint, and with Access sign-in, which
+// mounts its routes in the Hono app. This replaces the OAuth provider's export in `src/worker.ts`.
+const APP_WORKER_HANDLER = `export default appHandler;`;
 
 // Without the consent page, no popup needs `window.opener`, so `src/http/index.ts` keeps Hono's
-// default `Cross-Origin-Opener-Policy`. Both `app-only` and `bearer` swap in this assertion.
+// default `Cross-Origin-Opener-Policy`. Every selection that drops OAuth swaps in this assertion.
 const DEFAULT_OPENER_POLICY_TEST = `    // No popup needs \`window.opener\`, so Hono's default applies.
     expect(response.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin");`;
 
 // Without the web app, the Vite build writes to `dist/` instead of React Router's `build/`.
 const MCP_ONLY_BUILD_OUTPUT = `The Worker and its \`wrangler.json\` go to \`dist/ssr/\`, and the static assets to \`dist/client/\`.`;
+
+// Without the web app, `src/http/access.ts` throws no `HttpError`, so it imports only the
+// upstream error.
+const MCP_ONLY_ACCESS_ERRORS_IMPORT = `import { UpstreamError } from "#lib/errors.ts";`;
 
 // Bearer mode replaces the OAuth sentences in `AGENTS.md` and `README.md`.
 const BEARER_AGENTS_INTRO = `\`src/auth/bearer.ts\` guards it with one static bearer token.`;
@@ -159,18 +187,85 @@ const BEARER_ACCESS_BYPASS = `\`\`\`json
 The bypass application leaves those paths open to everyone. That's intended: \`/healthz\` reveals
 nothing, and \`/mcp\` checks the bearer token.`;
 
-const VARIANTS: Record<Variant, VariantSpec> = {
-  "mcp-only": {
-    summary: "Keep the MCP endpoint and drop the web app.",
+// With Access sign-in, the Hono app serves `/mcp` through the routes in `src/auth/access.ts`.
+// These replace the `@starter:oauth` blocks in `src/worker.ts` and `src/http/index.ts`.
+const ACCESS_WORKER_HEADER = `// With Cloudflare Access sign-in, the Hono app also serves \`/mcp\`, through the routes from
+// \`src/auth/access.ts\`.`;
+const ACCESS_ROUTES_IMPORT = `import { accessRoutes } from "#auth/access.ts";`;
+const ACCESS_ROUTES_MOUNT = `  app.route("/", accessRoutes);`;
+
+// Access sign-in has no GitHub account, no upstream token, and no secrets. These replace the OAuth
+// wording in the files that Access sign-in keeps.
+const ACCESS_SCOPE_DESCRIPTIONS = `  profile: "See your email address and name.",`;
+const ACCESS_ACCESS_TOKEN = `  // Cloudflare Access sign-in never sets \`accessToken\`.`;
+const ACCESS_DEV_VARS = `# Cloudflare Access sign-in needs no secrets. Without a \`secrets\` block in \`wrangler.jsonc\`,
+# Wrangler loads every key here, and a key with a var's name overrides that var locally.`;
+const ACCESS_AGENTS_INTRO = `Cloudflare Access signs MCP clients in, and \`src/auth/access.ts\` checks the identity that Access
+forwards.`;
+const ACCESS_AGENTS_MCP_INVARIANTS = `- \`pnpm dev\` loads every \`.dev.vars\` key, because \`wrangler.jsonc\` has no \`secrets\` block, and a
+  key named after a var overrides it. Tests bind fixed values over every var, so \`.dev.vars\`
+  doesn't affect them.
+- \`McpAgent\` is deprecated and banned by oxlint. Serve MCP through \`src/mcp/handler.ts\`.
+- Per-user KV keys start with \`user:<id>:\`, so they stay apart from every other record in the
+  namespace.`;
+const ACCESS_AGENTS_INVARIANTS = `- Cloudflare Access is the authorization server for \`/mcp\`, through Managed OAuth.
+  \`src/auth/access.ts\` serves MCP only to an identity that \`resolveIdentity()\` accepts, and
+  answers 401 without one.
+- \`/mcp\` refuses cross-origin browser requests and sends no CORS headers, because an Access
+  session cookie can authenticate a browser. Keep both rules.`;
+const ACCESS_README_INTRO = `MCP clients sign in through Cloudflare Access.`;
+const ACCESS_README_FEATURE = `**Cloudflare Access sign-in.** Cloudflare Access is the authorization server for \`/mcp\`,
+through Managed OAuth, and the Worker verifies the identity that Access forwards. It needs no
+GitHub app and no Worker secrets.`;
+const ACCESS_README_LOCAL = `For MCP requests under \`pnpm dev\`, the dev server fakes the Access identity from the \`access.dev\`
+block in \`wrangler.jsonc\`. Set \`ACCESS_TEAM_DOMAIN\` and \`ACCESS_AUD\` under \`vars\`, and set
+\`access.dev.aud\` to the same value as \`ACCESS_AUD\`. With the vars empty, \`/mcp\` answers \`401\`.`;
+const ACCESS_README_ENDPOINTS = `- \`http://localhost:5173/.well-known/oauth-protected-resource/mcp\`: protected resource metadata,
+  which names Cloudflare Access as the authorization server.
+- \`http://localhost:5173/.well-known/oauth-protected-resource\`: the same document.`;
+const ACCESS_README_CLIENT = `Each client opens a browser for the Cloudflare Access login. The Access application's policy
+decides who may connect. [docs/auth.md](docs/auth.md#cloudflare-access-sign-in) describes the
+application.
+
+- **claude.ai and Claude Desktop:** go to **Settings** > **Connectors** > **Add custom
+  connector**, and enter the URL. claude.ai connects from Anthropic's servers, so it needs a
+  deployed URL, not \`localhost\`.
+- **Claude Code:** add the server, then run \`/mcp\` in Claude Code to sign in.
+
+  \`\`\`sh
+  claude mcp add --transport http <name> https://<host>/mcp
+  \`\`\``;
+const ACCESS_MCP_TOKEN_CHECK = `With Cloudflare Access sign-in, Access validates the client's token, and \`accessRoutes\` in
+\`src/auth/access.ts\` verifies the identity that Access forwards. In bearer mode,
+\`src/auth/bearer.ts\` checks a static token instead.`;
+const ACCESS_MCP_PROPS = `With Cloudflare Access sign-in, \`accessProps()\` in \`src/auth/access.ts\` creates the props for
+each request. \`id\` and \`login\` are the email that Access verified, in lowercase, \`name\` is the
+name that Access reports or the email, \`scopes\` holds every scope, and there's no \`accessToken\`.`;
+const ACCESS_HOST_CHECK = `\`createMcpApiHandler()\` in \`src/mcp/handler.ts\` checks the \`Host\` header only on \`localhost\` and
+\`workers.dev\` by default. To apply the check on the custom domain, pass \`allowedHostnames\` where
+\`src/auth/access.ts\` creates the handler. Run \`pnpm test\` afterward, because the tests send
+requests to \`localhost\`.`;
+const ACCESS_PREVIEW_MCP = `With Cloudflare Access sign-in, a Preview's \`/mcp\` answers \`401\`, because Access doesn't cover
+Preview hostnames, and the Worker serves MCP only to an identity that Access forwards.`;
+const ACCESS_CUSTOM_DOMAIN = `With Cloudflare Access sign-in, create the Access application on the custom domain, as
+[auth.md](auth.md#access-layouts) describes.`;
+const ACCESS_WEB_BOTH = `### Both halves
+
+With Cloudflare Access sign-in, one allow application can cover both halves, as the
+[Access layouts](auth.md#access-layouts) describe. A private web app uses the host layout, and a
+public web app uses the path layout.`;
+const ACCESS_AUTH_INTRO = `MCP clients sign in through Cloudflare Access. [Bearer mode](#bearer-mode) replaces it with one
+static token for a single user.`;
+
+const FRAGMENTS: Record<Fragment, FragmentSpec> = {
+  "no-web": {
     dropKinds: ["web"],
     paths: [
       { path: "src/web" },
-      { path: "src/http/access.ts" },
       { path: "src/http/routes/api.ts" },
       { path: "react-router.config.ts" },
       { path: "test/web" },
-      { path: "test/http/access.test.ts" },
-      { path: "test/helpers/access.ts" },
+      { path: "test/http/api.test.ts" },
       { path: "docs/web.md" },
     ],
     dependencies: [
@@ -181,7 +276,6 @@ const VARIANTS: Record<Variant, VariantSpec> = {
       "@types/react",
       "@types/react-dom",
       "isbot",
-      "jose",
     ],
     dependenciesIfUnused: [],
     scripts: {
@@ -193,19 +287,21 @@ const VARIANTS: Record<Variant, VariantSpec> = {
       },
     },
     // The rule that keeps MCP code apart from the web app means nothing without the web app. Its
-    // lint override only adds the web app's imports to the root rule, so it goes too. The note
-    // about the web app's Access vars in `docs/auth.md` goes for the same reason.
+    // lint override only adds the web app's imports to the root rule, so it goes too.
     swaps: [
       { file: "docs/deploy.md", anchor: "go to `build/server/`", content: MCP_ONLY_BUILD_OUTPUT },
       { file: AGENTS, anchor: "never import `src/web`", content: "" },
       { file: "docs/conventions.md", anchor: "never import `src/web`", content: "" },
-      { file: "docs/auth.md", anchor: "belong to the web app's identity gate", content: "" },
       { file: ".oxlintrc.json", anchor: `"files": ["src/mcp/**", "src/auth/**"]`, content: "" },
+      {
+        file: "src/http/access.ts",
+        anchor: "import { HttpError, UpstreamError }",
+        content: MCP_ONLY_ACCESS_ERRORS_IMPORT,
+      },
     ],
     swapsCover: [],
   },
-  "app-only": {
-    summary: "Keep the web app and drop the MCP endpoint and its OAuth flow.",
+  "no-mcp": {
     dropKinds: ["mcp", "oauth"],
     paths: [
       { path: "src/mcp" },
@@ -222,7 +318,7 @@ const VARIANTS: Record<Variant, VariantSpec> = {
     dependenciesIfUnused: ["zod"],
     scripts: {},
     swaps: [
-      { file: "src/worker.ts", anchor: "createProviderCache(", content: APP_ONLY_WORKER_HANDLER },
+      { file: "src/worker.ts", anchor: "createProviderCache(", content: APP_WORKER_HANDLER },
       {
         file: "test/http/healthz.test.ts",
         anchor: "Cross-Origin-Opener-Policy",
@@ -231,12 +327,13 @@ const VARIANTS: Record<Variant, VariantSpec> = {
     ],
     swapsCover: [],
   },
+  // Bearer mode keeps `src/auth/access.ts`, which the template ships next to the OAuth code, so a
+  // project with the web app can still switch to Access sign-in. `no-access` deletes it otherwise.
   bearer: {
-    summary: "Keep both halves and replace MCP OAuth with one static bearer token.",
     dropKinds: ["oauth"],
     paths: [
-      { path: "src/auth", keep: ["src/auth/bearer.ts"] },
-      { path: "test/auth" },
+      { path: "src/auth", keep: ["src/auth/bearer.ts", "src/auth/access.ts"] },
+      { path: "test/auth", keep: ["test/auth/access.test.ts"] },
       { path: "test/helpers/oauth.ts" },
     ],
     dependencies: ["@cloudflare/workers-oauth-provider"],
@@ -279,7 +376,156 @@ const VARIANTS: Record<Variant, VariantSpec> = {
     ],
     swapsCover: ["src/worker.ts"],
   },
+  // Access sign-in keeps `src/auth/bearer.ts`, as every MCP selection does.
+  "access-sign-in": {
+    dropKinds: ["oauth"],
+    paths: [
+      { path: "src/auth", keep: ["src/auth/bearer.ts", "src/auth/access.ts"] },
+      { path: "test/auth", keep: ["test/auth/access.test.ts"] },
+      { path: "test/helpers/oauth.ts" },
+    ],
+    dependencies: ["@cloudflare/workers-oauth-provider"],
+    dependenciesIfUnused: [],
+    scripts: {},
+    swaps: [
+      { file: "src/worker.ts", anchor: "OAuth provider first", content: ACCESS_WORKER_HEADER },
+      { file: "src/worker.ts", anchor: `"#auth/provider.ts"`, content: "" },
+      { file: "src/worker.ts", anchor: `"#lib/log.ts"`, content: "" },
+      { file: "src/worker.ts", anchor: "createProviderCache(", content: APP_WORKER_HANDLER },
+      { file: "src/http/index.ts", anchor: `"#auth/routes.ts"`, content: ACCESS_ROUTES_IMPORT },
+      { file: "src/http/index.ts", anchor: "authRoutes);", content: ACCESS_ROUTES_MOUNT },
+      {
+        file: "test/http/healthz.test.ts",
+        anchor: "Cross-Origin-Opener-Policy",
+        content: DEFAULT_OPENER_POLICY_TEST,
+      },
+      { file: "src/env.ts", anchor: "See your GitHub login", content: ACCESS_SCOPE_DESCRIPTIONS },
+      { file: "src/env.ts", anchor: "`accessToken` is the user's", content: ACCESS_ACCESS_TOKEN },
+      {
+        file: ".dev.vars.example",
+        anchor: "Wrangler ignores a key here",
+        content: ACCESS_DEV_VARS,
+      },
+      {
+        file: AGENTS,
+        anchor: "The OAuth provider in `src/auth` guards it",
+        content: ACCESS_AGENTS_INTRO,
+      },
+      {
+        file: AGENTS,
+        anchor: "loads a `.dev.vars` key only if",
+        content: ACCESS_AGENTS_MCP_INVARIANTS,
+      },
+      {
+        file: AGENTS,
+        anchor: "read the provider's helpers",
+        content: ACCESS_AGENTS_INVARIANTS,
+      },
+      { file: README, anchor: "sign in with GitHub through OAuth", content: ACCESS_README_INTRO },
+      { file: README, anchor: "**OAuth.**", content: ACCESS_README_FEATURE },
+      { file: README, anchor: "set up GitHub OAuth before", content: ACCESS_README_LOCAL },
+      { file: README, anchor: "protected resource metadata.", content: ACCESS_README_ENDPOINTS },
+      {
+        file: README,
+        anchor: "consent page and the GitHub sign-in",
+        content: ACCESS_README_CLIENT,
+      },
+      {
+        file: "docs/mcp.md",
+        anchor: "validates the token and calls",
+        content: ACCESS_MCP_TOKEN_CHECK,
+      },
+      { file: "docs/mcp.md", anchor: "creates the props when it calls", content: ACCESS_MCP_PROPS },
+      { file: "docs/deploy.md", anchor: "pass `allowedHostnames`", content: ACCESS_HOST_CHECK },
+      { file: "docs/deploy.md", anchor: "`resource_metadata`, so", content: ACCESS_PREVIEW_MCP },
+      {
+        file: "docs/deploy.md",
+        anchor: "also set `MCP_RESOURCE` in the top-level",
+        content: ACCESS_CUSTOM_DOMAIN,
+      },
+      { file: "docs/web.md", anchor: "### Both halves on one hostname", content: ACCESS_WEB_BOTH },
+      { file: "docs/web.md", anchor: "### Both halves on two hostnames", content: "" },
+      { file: "docs/web.md", anchor: "also answer on `mcp.example.com`", content: "" },
+      { file: "docs/auth.md", anchor: "is another sign-in mode", content: ACCESS_AUTH_INTRO },
+      { file: "docs/auth.md", anchor: "### Turn on Access sign-in", content: "" },
+    ],
+    swapsCover: ["src/worker.ts"],
+  },
+  // Without the web app and without Access sign-in, nothing checks an Access identity.
+  "no-access": {
+    dropKinds: ["access"],
+    paths: [
+      { path: "src/http/access.ts" },
+      { path: "src/auth/access.ts" },
+      { path: "test/http/access.test.ts" },
+      { path: "test/auth/access.test.ts" },
+      { path: "test/helpers/access.ts" },
+    ],
+    dependencies: ["jose"],
+    dependenciesIfUnused: [],
+    scripts: {},
+    swaps: [{ file: "docs/auth.md", anchor: "Don't reuse `ACCESS_TEAM_DOMAIN`", content: "" }],
+    swapsCover: [],
+  },
 };
+
+// The selection that each single-variant command stands for.
+const VARIANTS: Record<Variant, { summary: string; selection: Selection }> = {
+  "mcp-only": {
+    summary: "Keep the MCP endpoint with GitHub OAuth and drop the web app.",
+    selection: { parts: new Set(["mcp"]), signIn: "github" },
+  },
+  "app-only": {
+    summary: "Keep the web app and drop the MCP endpoint and its OAuth flow.",
+    selection: { parts: new Set(["web"]), signIn: undefined },
+  },
+  bearer: {
+    summary: "Keep both parts and replace MCP OAuth with one static bearer token.",
+    selection: { parts: new Set(["mcp", "web"]), signIn: "bearer" },
+  },
+};
+
+// The fragments that a selection applies. The Access identity check goes only when neither the
+// web app nor Access sign-in needs it.
+function fragmentsFor(selection: Selection): Fragment[] {
+  const fragments: Fragment[] = [];
+  const web = selection.parts.has("web");
+  if (!web) {
+    fragments.push("no-web");
+  }
+  if (!selection.parts.has("mcp")) {
+    fragments.push("no-mcp");
+  }
+  if (selection.signIn === "bearer") {
+    fragments.push("bearer");
+  }
+  if (selection.signIn === "access") {
+    fragments.push("access-sign-in");
+  }
+  if (!web && selection.signIn !== "access") {
+    fragments.push("no-access");
+  }
+  return fragments;
+}
+
+function distinct<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+// Combines fragments into one set of changes. A path or a dependency that two fragments list is
+// handled once.
+function mergeFragments(fragments: readonly Fragment[]): FragmentSpec {
+  const specs = fragments.map((fragment) => FRAGMENTS[fragment]);
+  return {
+    dropKinds: distinct(specs.flatMap((spec) => spec.dropKinds)),
+    paths: specs.flatMap((spec) => spec.paths),
+    dependencies: distinct(specs.flatMap((spec) => spec.dependencies)),
+    dependenciesIfUnused: distinct(specs.flatMap((spec) => spec.dependenciesIfUnused)),
+    scripts: Object.fromEntries(specs.flatMap((spec) => Object.entries(spec.scripts))),
+    swaps: specs.flatMap((spec) => spec.swaps),
+    swapsCover: distinct(specs.flatMap((spec) => spec.swapsCover)),
+  };
+}
 
 const FINISH_EDITS: TextEdit[] = [
   {
@@ -305,6 +551,14 @@ function isKind(name: string): name is Kind {
 
 function isVariant(name: string): name is Variant {
   return Object.hasOwn(VARIANTS, name);
+}
+
+function isPart(name: string): name is Part {
+  return PARTS.has(name);
+}
+
+function isSignIn(name: string): name is SignIn {
+  return SIGN_INS.has(name);
 }
 
 function isBlank(line: string | undefined): boolean {
@@ -402,14 +656,14 @@ function exists(file: string): boolean {
   }
 }
 
-// Whether a file is missing because an earlier run applied a variant that deletes it, such as
+// Whether a file is missing because an earlier run applied a fragment that deletes it, such as
 // `docs/web.md` after `mcp-only`. A swap for that file has nothing to replace when `bearer` runs
-// later. The variant must list the file itself, not a directory that holds it, and every path that
+// later. The fragment must list the file itself, not a directory that holds it, and every path that
 // it deletes must already be gone, so a mistyped or stale swap path still fails.
 function removedByEarlierVariant(file: string): boolean {
   return (
     !exists(file) &&
-    Object.values(VARIANTS).some(
+    Object.values(FRAGMENTS).some(
       (spec) =>
         spec.paths.some((removal) => removal.path === file && removal.keep === undefined) &&
         spec.paths.every((removal) => onlyKeptPathsRemain(removal.path, removal.keep ?? [])),
@@ -478,7 +732,7 @@ function processBlocks(
       } else {
         out.push(...swap.content.split("\n"));
       }
-    } else if (options.cover && block.kind !== "web") {
+    } else if (options.cover && (block.kind === "mcp" || block.kind === "oauth")) {
       throw new PruneError(
         `${file}:${block.line}: no swap covers this @starter:${block.kind} block, so its code would survive.`,
       );
@@ -606,15 +860,11 @@ function wrapComment(prose: string, prefix: string, width: number): string[] {
 }
 
 // Names the halves that the tree keeps, in the form that `AGENTS.md` uses. The tree tells which
-// variant ran, so `--finish` works the same whether it runs with the variant or later.
+// selection ran, so `--finish` works the same whether it runs with the selection or later.
 function describeHalves(ws: Workspace): string {
   const halves: string[] = [];
   if (isPresent(ws, "src/mcp")) {
-    halves.push(
-      isPresent(ws, "src/auth/provider.ts")
-        ? "MCP endpoint (OAuth)"
-        : "MCP endpoint (bearer token)",
-    );
+    halves.push(`MCP endpoint (${describeSignIn(ws)})`);
   }
   if (isPresent(ws, "src/web")) {
     halves.push("web app");
@@ -623,6 +873,19 @@ function describeHalves(ws: Workspace): string {
     throw new PruneError("neither src/mcp nor src/web exists, so no half is left to describe.");
   }
   return `${HALVES_PREFIX} ${halves.join(", ")}.`;
+}
+
+// Names the MCP sign-in mode. Bearer mode with the web app keeps `src/auth/access.ts` unused, so
+// Access sign-in shows in the module that mounts its routes, not in which files exist.
+function describeSignIn(ws: Workspace): string {
+  if (isPresent(ws, "src/auth/provider.ts")) {
+    return "OAuth";
+  }
+  const app = "src/http/index.ts";
+  if (isPresent(ws, app) && ws.read(app).includes(`from "#auth/access.ts"`)) {
+    return "Cloudflare Access";
+  }
+  return "bearer token";
 }
 
 // Replaces the one line that starts with `Halves present:`.
@@ -754,28 +1017,33 @@ function section(report: Report, title: string): string[] {
   return lines;
 }
 
-function planVariant(ws: Workspace, variant: Variant, report: Report): void {
-  const spec = VARIANTS[variant];
+function planSelection(ws: Workspace, label: string, spec: FragmentSpec, report: Report): void {
   const errors: string[] = [];
 
+  // A kept path may be gone already when an earlier run deleted it, such as `src/auth/access.ts`
+  // after `mcp-only`, and `bearer` runs later.
   const missing = spec.paths
-    .flatMap((removal) => [removal.path, ...(removal.keep ?? [])])
+    .flatMap((removal) => [
+      removal.path,
+      ...(removal.keep ?? []).filter((kept) => !removedByEarlierVariant(kept)),
+    ])
     .filter((file) => !exists(file));
   if (missing.length > 0) {
     throw new PruneError(
-      `The ${variant} file list names paths that don't exist:\n${missing.map((file) => `  ${file}`).join("\n")}`,
+      `The ${label} file list names paths that don't exist:\n${missing.map((file) => `  ${file}`).join("\n")}`,
     );
   }
 
-  const deleted = section(report, "Deleted files and directories");
+  const deletedPaths: string[] = [];
   for (const removal of spec.paths) {
     if (removal.keep === undefined) {
       ws.delete(removal.path);
-      deleted.push(removal.path);
+      deletedPaths.push(removal.path);
     } else {
-      deleteExcept(ws, removal.path, removal.keep, deleted);
+      deleteExcept(ws, removal.path, removal.keep, deletedPaths);
     }
   }
+  section(report, "Deleted files and directories").push(...new Set(deletedPaths));
 
   const blocks = section(report, "Removed blocks");
   const swapped = section(report, "Swapped blocks");
@@ -790,8 +1058,8 @@ function planVariant(ws: Workspace, variant: Variant, report: Report): void {
         strip: false,
       });
       ws.write(file, result.text);
-      for (const [label, count] of result.removed) {
-        blocks.push(`${file}: ${count} ${label}`);
+      for (const [blockLabel, count] of result.removed) {
+        blocks.push(`${file}: ${count} ${blockLabel}`);
       }
       for (const swap of result.swapped) {
         usedSwaps.add(swap);
@@ -802,7 +1070,7 @@ function planVariant(ws: Workspace, variant: Variant, report: Report): void {
     }
   }
   for (const swap of spec.swaps) {
-    if (!usedSwaps.has(swap) && !removedByEarlierVariant(swap.file)) {
+    if (!usedSwaps.has(swap) && !ws.isDeleted(swap.file) && !removedByEarlierVariant(swap.file)) {
       errors.push(`${swap.file}: no marked block contains ${swap.anchor}.`);
     }
   }
@@ -839,7 +1107,7 @@ function planVariant(ws: Workspace, variant: Variant, report: Report): void {
 
   if (errors.length > 0) {
     throw new PruneError(
-      `The ${variant} variant can't be applied:\n${errors.map((error) => `  ${error}`).join("\n")}`,
+      `The ${label} selection can't be applied:\n${errors.map((error) => `  ${error}`).join("\n")}`,
     );
   }
 }
@@ -948,13 +1216,20 @@ function removeEmptyDirectories(dir = ""): string[] {
   return removed;
 }
 
-function usage(): never {
+function usage(message?: string): never {
   console.error(
     [
-      "Usage: node scripts/prune.ts <variant> [--finish]",
+      ...(message === undefined ? [] : [message, ""]),
+      "Usage: node scripts/prune.ts --parts <mcp,web|mcp|web> [--sign-in <mode>] [--finish]",
+      "       node scripts/prune.ts <variant> [--finish]",
       "       node scripts/prune.ts --finish",
       "",
-      "Variants:",
+      "--parts lists the parts to keep. --sign-in is required with mcp and not allowed without it:",
+      "  github    MCP clients sign in with GitHub through OAuth.",
+      "  bearer    MCP clients send one static bearer token.",
+      "  access    MCP clients sign in through Cloudflare Access.",
+      "",
+      "Variants, one per run:",
       ...Object.entries(VARIANTS).map(([name, spec]) => `  ${name.padEnd(9)} ${spec.summary}`),
       "",
       "--finish strips the remaining markers, rewrites the Halves present line in AGENTS.md, and",
@@ -964,31 +1239,76 @@ function usage(): never {
   process.exit(2);
 }
 
-function parseArgs(args: string[]): { variant: Variant | undefined; finish: boolean } {
+type Args = { selection: Selection | undefined; label: string | undefined; finish: boolean };
+
+function parseParts(value: string | undefined): Set<Part> {
+  const names = (value ?? "").split(",").map((name) => name.trim());
+  const parts = new Set<Part>();
+  for (const name of names) {
+    if (!isPart(name) || parts.has(name)) {
+      usage(`--parts takes mcp, web, or both, separated by a comma, not "${value ?? ""}".`);
+    }
+    parts.add(name);
+  }
+  return parts;
+}
+
+function parseArgs(args: string[]): Args {
   let variant: Variant | undefined;
+  let parts: Set<Part> | undefined;
+  let signIn: SignIn | undefined;
   let finish = false;
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index] ?? "";
     if (arg === "--finish") {
       finish = true;
+    } else if (arg === "--parts" && parts === undefined) {
+      index++;
+      parts = parseParts(args[index]);
+    } else if (arg === "--sign-in" && signIn === undefined) {
+      index++;
+      const value = args[index] ?? "";
+      if (!isSignIn(value)) {
+        usage(`--sign-in takes github, bearer, or access, not "${value}".`);
+      }
+      signIn = value;
     } else if (variant === undefined && isVariant(arg)) {
       variant = arg;
     } else {
       usage();
     }
   }
-  if (variant === undefined && !finish) {
-    usage();
+  if (variant !== undefined) {
+    if (parts !== undefined || signIn !== undefined) {
+      usage("A variant can't be combined with --parts or --sign-in.");
+    }
+    return { selection: VARIANTS[variant].selection, label: variant, finish };
   }
-  return { variant, finish };
+  if (parts === undefined) {
+    if (signIn !== undefined) {
+      usage("--sign-in needs --parts.");
+    }
+    if (!finish) {
+      usage();
+    }
+    return { selection: undefined, label: undefined, finish };
+  }
+  if (parts.has("mcp") !== (signIn !== undefined)) {
+    usage("Pass --sign-in exactly when --parts includes mcp.");
+  }
+  const label = [`--parts ${[...parts].join(",")}`, signIn && `--sign-in ${signIn}`]
+    .filter(Boolean)
+    .join(" ");
+  return { selection: { parts, signIn }, label, finish };
 }
 
 function main(): void {
-  const { variant, finish } = parseArgs(process.argv.slice(2));
+  const { selection, label, finish } = parseArgs(process.argv.slice(2));
   const ws = new Workspace();
   const report: Report = [];
   try {
-    if (variant !== undefined) {
-      planVariant(ws, variant, report);
+    if (selection !== undefined && label !== undefined) {
+      planSelection(ws, label, mergeFragments(fragmentsFor(selection)), report);
     }
     if (finish) {
       planFinish(ws, report);
@@ -1007,7 +1327,7 @@ function main(): void {
   ws.commit();
   section(report, "Removed empty directories").push(...removeEmptyDirectories());
 
-  const steps = [variant, finish ? "--finish" : undefined].filter((step) => step !== undefined);
+  const steps = [label, finish ? "--finish" : undefined].filter((step) => step !== undefined);
   console.log(`Pruned with ${steps.join(" ")}.`);
   for (const { title, lines } of report) {
     if (lines.length > 0) {

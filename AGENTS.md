@@ -130,11 +130,19 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 
 <!-- @starter:end -->
 
-<!-- @starter:web -->
+<!-- @starter:access -->
 
 - Identity goes through `src/http/access.ts`. `ctx.access` is absent behind the static assets
   router in production, so `access.ts` verifies the `Cf-Access-Jwt-Assertion` header itself.
   Don't read `ctx.access` anywhere else.
+- `access.dev.aud` in `wrangler.jsonc` must equal `ACCESS_AUD`, or `pnpm dev` has no identity.
+
+<!-- @starter:end -->
+
+<!-- @starter:web -->
+
+- `WEB_ACCESS` alone decides whether the web app is private. It has the same value in `vars` and
+  `previews.vars`.
 
 <!-- @starter:end -->
 

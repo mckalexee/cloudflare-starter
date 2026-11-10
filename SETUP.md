@@ -197,16 +197,18 @@ under `previews.vars` for Previews. Set both unless the list says otherwise.
   `previews.vars` value empty, because each Preview derives its own.
 - `ALLOWED_GITHUB_LOGINS` (GitHub OAuth): the allowed accounts from the inputs, in both places.
   Local sign-in reads it too, unless `.dev.vars` sets its own value.
+- `WEB_ACCESS` (web app kept): `private` for a private web app, `public` otherwise.
 - `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` (private web app): leave them empty for now. Step 12 sets
   them.
 
 #### Web app only
 
 - `APP_NAME`: step 3 already set it to the display name. Confirm both places.
+- `WEB_ACCESS`: `private` for a private web app, `public` otherwise.
 - `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` (private web app): leave them empty for now. Step 12 sets
   them on a custom domain, and step 14 on `workers.dev`.
 
-A public web-app-only project changes no vars in this step.
+A public web-app-only project changes no vars in this step besides confirming `WEB_ACCESS`.
 
 ### 9. Configure the custom domain (custom domain only)
 

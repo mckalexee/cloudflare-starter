@@ -1,6 +1,6 @@
 // Wrangler configuration for the Worker: its runtime flags, bindings, and vars. Blocks between
-// `@starter:mcp`, `@starter:oauth`, or `@starter:web` and `@starter:end` belong to one part of the
-// template, so a project that drops that part can delete them.
+// `@starter:mcp`, `@starter:oauth`, `@starter:web`, or `@starter:access` and `@starter:end` belong
+// to one part of the template, so a project that drops that part can delete them.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cloudflare-starter",
@@ -52,7 +52,13 @@
     "ALLOWED_GITHUB_LOGINS": "",
     // @starter:end
     // @starter:web
-    // Cloudflare Access team domain and application AUD tag. Empty disables the identity gate.
+    // Whether the web app's private routes need a Cloudflare Access identity: `public` or
+    // `private`. `private` needs both Access vars, and fails closed without them.
+    "WEB_ACCESS": "public",
+    // @starter:end
+    // @starter:access
+    // Cloudflare Access team domain and the AUD tag of the Access application. Identities from any
+    // other application are rejected. With both empty, no request has an identity.
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
     // @starter:end
@@ -70,6 +76,10 @@
       "ALLOWED_GITHUB_LOGINS": "",
       // @starter:end
       // @starter:web
+      // The same value as in production.
+      "WEB_ACCESS": "public",
+      // @starter:end
+      // @starter:access
       "ACCESS_TEAM_DOMAIN": "",
       "ACCESS_AUD": "",
       // @starter:end
@@ -79,9 +89,10 @@
     "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_PREVIEW_KV_ID" }],
     // @starter:end
   },
-  // @starter:web
-  // Fakes `ctx.access` for `wrangler dev` only. It matters only to code that reads `ctx.access`,
-  // which is absent in production behind the static assets router.
+  // @starter:access
+  // Fakes `ctx.access` under `pnpm dev`. Production has no `ctx.access` behind the static assets
+  // router. `src/http/access.ts` accepts the fake only when `aud` equals `ACCESS_AUD`, so keep the
+  // two values the same.
   "access": {
     "dev": {
       "aud": "cloudflare-starter-dev",

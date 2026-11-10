@@ -8,6 +8,17 @@ MCP clients sign in through OAuth. The page covers the sign-in flow, what the OA
 for you, how to configure GitHub, and how to swap GitHub for another identity provider.
 [Bearer mode](#bearer-mode) replaces OAuth with one static token for a single user.
 
+<!-- @starter:end -->
+
+<!-- @starter:access -->
+
+[Cloudflare Access sign-in](#cloudflare-access-sign-in) is another sign-in mode, where Cloudflare
+Access signs MCP clients in and the Worker needs no secrets.
+
+<!-- @starter:end -->
+
+<!-- @starter:oauth -->
+
 The Worker is both the OAuth authorization server and the resource server for its MCP endpoint.
 `OAuthProvider` from `@cloudflare/workers-oauth-provider` plays both roles. `src/worker.ts` builds
 one provider per resource URL through `src/auth/provider.ts`, and every request passes through it
@@ -308,7 +319,9 @@ and as the grant's `userId`, and `email` as `login`. Store the client ID and sec
 
 <!-- @starter:oauth -->
 
-Don't reuse `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`, which belong to the web app's identity gate.
+Don't reuse `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`, which name the self-hosted Access application
+that `src/http/access.ts` verifies identities against.
+[Cloudflare Access sign-in](#cloudflare-access-sign-in) needs no code of this kind.
 
 <!-- @starter:end -->
 
@@ -316,6 +329,164 @@ Don't reuse `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`, which belong to the web app's
 
 The Access policy already decides who signs in, so `ALLOWED_GITHUB_LOGINS` (or its renamed
 version) can be `*`, or a shorter list for defense in depth.
+
+<!-- @starter:end -->
+
+<!-- @starter:access -->
+
+## Cloudflare Access sign-in
+
+In this mode, Cloudflare Access is the authorization server for `/mcp`, through its Managed OAuth
+feature, which is in beta. An MCP client registers with Access, the person signs in on the Access
+login page, and the client sends the token from Access with each request. Access checks the token
+and the application's policy, and forwards the request with a signed `Cf-Access-Jwt-Assertion`
+header. The Worker only verifies that header, so it needs no GitHub app and no secrets.
+
+`accessRoutes` in `src/auth/access.ts` serves these paths:
+
+| Path                                        | Purpose                                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `/mcp`                                      | Verifies the identity that Access forwards, and serves MCP as that person.            |
+| `/.well-known/oauth-protected-resource/mcp` | Protected resource metadata (RFC 9728) that names Access as the authorization server. |
+| `/.well-known/oauth-protected-resource`     | The same document at the URL without the path suffix.                                 |
+
+<!-- @starter:end -->
+
+<!-- @starter:access -->
+
+### Turn on Access sign-in
+
+This project serves `/mcp` with another sign-in mode, so nothing mounts `accessRoutes`. To switch,
+mount the routes in `src/http/index.ts` with `app.route("/", accessRoutes)`, make `src/worker.ts`
+export the Hono app's handler with `export default appHandler;`, and delete the code that only the
+old mode uses. Then create the Access application and set the vars, as the rest of this section
+describes.
+
+<!-- @starter:end -->
+
+<!-- @starter:access -->
+
+### How the Worker checks a request
+
+- `resolveIdentity()` from `src/http/access.ts` accepts an identity only from the application that
+  `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` name. A JWT must carry that issuer and audience, and
+  `ctx.access`, when the runtime provides it, must report that `aud`.
+- The caller's `id` and `login` are the verified email in lowercase, and `name` is the name that
+  Access reports, or the email. The Access policy already decided who may connect, so the caller
+  gets every scope in `SCOPES` and no upstream token.
+- Without an identity, `/mcp` answers `401` with `WWW-Authenticate: Bearer`. In production, Access
+  answers an unauthenticated request before the Worker runs, so the Worker's own `401` means that
+  no accepted identity arrived: on a Preview, on a hostname that the Access application doesn't
+  cover, or with an `ACCESS_AUD` that doesn't match the application.
+- With both Access vars empty, `/mcp` answers `401` and logs `auth.access_unconfigured` once per
+  isolate, and the metadata documents answer `404`. Setting only one of the vars is an error that
+  answers `500`.
+
+Access can also authenticate a browser with its session cookie, and the Worker then sees the same
+signed header as for an MCP client's token. So `/mcp` answers `403` to a request whose `Origin`
+isn't the endpoint's own origin, or whose `Sec-Fetch-Site` is `cross-site` or `same-site`, and it
+sends no CORS headers. A page on another site, or on a sibling subdomain, can't act with a
+signed-in person's session. MCP clients that run outside a browser, such as Claude Code and the
+claude.ai connectors, send neither header. A browser-based MCP client on another origin can't
+connect in this mode.
+
+### Access layouts
+
+Every layout has an allow application with Managed OAuth turned on. Pick the layout that fits the
+project:
+
+- **Host layout.** The allow application covers the whole hostname. Use it for MCP alone, or for
+  MCP next to a private web app, where one application and one policy cover both. Access serves
+  `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/mcp`, and
+  `/.well-known/oauth-authorization-server` itself. Add a bypass application on `/healthz`, as
+  `bypass-app.json` shows, so the deploy workflow's health check reaches the Worker.
+- **Path layout.** The allow application covers only `<host>/mcp`. Use it for MCP next to a public
+  web app. Access doesn't serve the metadata documents in this layout, so those requests reach the
+  Worker, which answers them. Without them, the Claude Code sign-in fails with a `404`. This layout
+  needs no bypass application, because `/healthz` is outside it.
+
+`allow-app.json` for the host layout:
+
+```json
+{
+  "type": "self_hosted",
+  "name": "<name>",
+  "domain": "<host>",
+  "destinations": [{ "type": "public", "uri": "<host>" }],
+  "session_duration": "24h",
+  "oauth_configuration": {
+    "enabled": true,
+    "dynamic_client_registration": {
+      "enabled": true,
+      "allow_any_on_localhost": true,
+      "allow_any_on_loopback": true,
+      "allowed_uris": [
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback"
+      ]
+    },
+    "grant": { "access_token_lifetime": "15m", "session_duration": "24h" }
+  },
+  "policies": [
+    {
+      "name": "Allowed people",
+      "decision": "allow",
+      "include": [
+        { "email": { "email": "ada@example.com" } },
+        { "email_domain": { "domain": "example.com" } }
+      ]
+    }
+  ]
+}
+```
+
+For the path layout, set `domain` to `<host>/mcp` and the destination's `uri` to `<host>/mcp`.
+
+These Managed OAuth settings are the ones that work with Claude Code and claude.ai:
+
+- Dynamic client registration is on, so each client registers itself.
+- `allow_any_on_localhost` and `allow_any_on_loopback` admit the redirect URIs of clients that run
+  on your computer, such as Claude Code.
+- `allowed_uris` admits the claude.ai and claude.com callbacks for the connectors.
+- Access tokens last 15 minutes, and a sign-in lasts 24 hours.
+
+`bypass-app.json` for the host layout:
+
+```json
+{
+  "type": "self_hosted",
+  "name": "<name> health check",
+  "domain": "<host>/healthz",
+  "destinations": [{ "type": "public", "uri": "<host>/healthz" }],
+  "policies": [
+    {
+      "name": "Health check",
+      "decision": "bypass",
+      "include": [{ "everyone": {} }]
+    }
+  ]
+}
+```
+
+Create the bypass application first, so the health check path is never blocked. The applications
+need an API token with the **Access: Apps and Policies Write** permission. Send each payload with
+`POST /accounts/<account-id>/access/apps`, and keep the payload files out of the repository,
+because the allow policy holds email addresses.
+
+### Set the vars
+
+Set these in `wrangler.jsonc`, in both `vars` and `previews.vars`:
+
+- `ACCESS_TEAM_DOMAIN`: the team domain, such as `myteam.cloudflareaccess.com`. The Zero Trust
+  dashboard shows it under **Settings** > **Team name and domain**.
+- `ACCESS_AUD`: the `aud` of the allow application, which the API returns as `result.aud`.
+
+Under `pnpm dev`, Access doesn't run, so the dev server fakes `ctx.access` from the `access.dev`
+block in `wrangler.jsonc`, and `/mcp` serves its identity. Set `access.dev.aud` to the same value
+as `ACCESS_AUD`, or local requests have no identity.
+
+Access doesn't cover Preview hostnames, so on a Preview, `/mcp` answers `401` and MCP clients
+can't sign in. The rest of the Preview works.
 
 <!-- @starter:end -->
 

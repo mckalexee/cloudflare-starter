@@ -6,8 +6,8 @@ example of a tool that calls GitHub with the user's token.
 
 ## How a request reaches a tool
 
-1. An MCP client sends a JSON-RPC request to `POST /mcp` with an access token.
-2. The token check in `src/auth` passes the request to the MCP handler in `src/mcp/handler.ts`.
+1. An MCP client sends a JSON-RPC request to `POST /mcp` with its credentials.
+2. The sign-in check in `src/auth` passes the request to the MCP handler in `src/mcp/handler.ts`.
 3. The handler wraps the stateless `createMcpHandler` from `agents/mcp/server`. For every request,
    it builds a fresh server with `createServer()` from `src/mcp/server.ts`, so no state outlives
    the request.
@@ -154,6 +154,14 @@ Pick the client that fits the test:
   token, the scopes come from `props.scopes`.
 - **Bearer mode:** `createBearerHandler({ token })` from `src/auth/bearer.ts` serves MCP as
   the owner.
+
+<!-- @starter:access -->
+
+- **Cloudflare Access sign-in:** `accessRoutes.fetch()` from `src/auth/access.ts`, with a token
+  from `createAccessIssuer()` in `test/helpers/access.ts`, serves MCP as the token's email, as
+  `test/auth/access.test.ts` does.
+
+<!-- @starter:end -->
 
 <!-- @starter:oauth -->
 

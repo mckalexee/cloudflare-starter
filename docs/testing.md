@@ -75,11 +75,12 @@ const response = await exports.default.fetch("http://example.com/healthz");
 
 <!-- @starter:end -->
 
-<!-- @starter:web -->
+<!-- @starter:access -->
 
 The vitest plugin doesn't populate `ctx.access`. To test the `ctx.access` branch of
 `resolveIdentity()`, call it directly with a context object that has an `access` property, as
-`test/http/access.test.ts` does. Requests through `exports.default.fetch()` test the JWT branch.
+`test/http/access.test.ts` does. Requests with a `Cf-Access-Jwt-Assertion` header test the JWT
+branch.
 
 <!-- @starter:end -->
 
@@ -89,10 +90,16 @@ The vitest plugin doesn't populate `ctx.access`. To test the `ctx.access` branch
 changes what the Worker sees. Restore every change after the test, or a later test sees it. For
 a one-off change, save the value and restore it in `finally`.
 
-<!-- @starter:web -->
+<!-- @starter:access -->
 
 `useAccessVars()` from `test/helpers/access.ts` returns a setter for `ACCESS_TEAM_DOMAIN` and
 `ACCESS_AUD`, and restores them after each test.
+
+<!-- @starter:end -->
+
+<!-- @starter:web -->
+
+`useWebAccess()` from the same file does the same for `WEB_ACCESS`.
 
 <!-- @starter:end -->
 
@@ -200,7 +207,7 @@ it("calls a tool as the GitHub user", async () => {
 
 <!-- @starter:end -->
 
-<!-- @starter:web -->
+<!-- @starter:access -->
 
 ## Test Cloudflare Access
 
@@ -212,8 +219,15 @@ RS256 key pair and a random team domain:
   issuer, or the expiry, or sign with an untrusted key or with HS256, to test rejections.
 
 Each issuer has its own team domain, and the Worker caches signing keys per team domain, so no
-test reuses another test's keys. A private-site test enables the network, adds `issuer.certs`,
-sets the vars with `useAccessVars()`, and sends the signed token in `Cf-Access-Jwt-Assertion`, as
+test reuses another test's keys. A test enables the network, adds `issuer.certs`, sets the vars with
+`useAccessVars()`, and sends the signed token in `Cf-Access-Jwt-Assertion`, as
+`test/http/access.test.ts` does.
+
+<!-- @starter:end -->
+
+<!-- @starter:web -->
+
+A private-site test also sets `WEB_ACCESS` to `private` with `useWebAccess()`, as
 `test/web/account.test.ts` does.
 
 <!-- @starter:end -->

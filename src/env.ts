@@ -31,6 +31,10 @@ export const SCOPE_DESCRIPTIONS: Record<Scope, string> = {
 // account, and the caller passed the `ALLOWED_GITHUB_LOGINS` check at sign-in and again at each
 // token refresh. Bearer mode uses the ID `"0"` for its one user.
 // @starter:end
+// @starter:access
+// With Cloudflare Access sign-in, `id` and `login` are the email address that Access verified, in
+// lowercase.
+// @starter:end
 
 /**
  * The caller as MCP tools see it: an account ID, a login, a display name, and the scopes

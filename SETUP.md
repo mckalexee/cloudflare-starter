@@ -29,7 +29,9 @@ step that doesn't wait on it, commit and push, and then ask for that one task.
 - **Set up first, build second.** If the user's request also says what the project does, such as
   the tools it needs, finish this runbook with the template's example code first. Start the
   project's own work after the report, when every push to `main` deploys. The setup depends on
-  none of the product decisions, and a half-built product can't be deployed or checked.
+  none of the product decisions, and a half-built product can't be deployed or checked. The
+  product work starts with the design brief that `AGENTS.md` describes, so the user agrees to
+  what you build before you build it.
 - **Look up before you ask.** Answer a question yourself when `gh`, `wrangler`, or a Cloudflare
   tool that you have can answer it, and tell the user the value that you found. Ask only for
   what you can't find.

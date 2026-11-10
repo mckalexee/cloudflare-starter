@@ -45,6 +45,11 @@ pnpm tail                            # stream the deployed Worker's live logs
 
 ## How to work
 
+- Agree on the design before you build. Before you write product code, send the user a short
+  brief: what the project does, each tool or page with its inputs and outputs, where the data
+  comes from, and what it leaves out. Ask the questions that only the user can answer, such as
+  which uses matter most and which defaults fit them, and wait for the answers. Don't choose
+  the product for the user.
 - Build in small steps: one tool, route, or upstream call at a time. Run `pnpm verify`, then
   commit. Don't end a session with work that isn't committed, and say in your last message what
   is deployed and what isn't.

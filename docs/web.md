@@ -258,8 +258,9 @@ the hostname.
 
 A self-hosted application needs a hostname on a zone in your account, so Worker-level Access is
 how you protect a site on its `workers.dev` hostname. It covers `/healthz` too, with no bypass,
-so leave the `HEALTHCHECK_URL` repository variable unset. It also covers Previews, so the Preview
-workflow's `/healthz` check fails on them.
+so leave the `HEALTHCHECK_URL` repository variable unset. It also covers Previews. The Preview
+workflow's `/healthz` check recognizes Access's answer and passes with a notice, so it can't tell
+whether a Preview serves traffic.
 
 <!-- @starter:mcp -->
 
@@ -369,6 +370,10 @@ Previews don't match a production hostname application. With the Access vars set
 `previews.vars`, private pages on a Preview answer 403 and public pages keep working. To use
 private pages on Previews, protect the Worker's Previews from **Workers & Pages** > your Worker >
 **Access** > **Previews only**, and set `ACCESS_AUD` in `previews.vars` to that application's AUD.
+
+That application also answers the Preview workflow's `/healthz` check, with a redirect to the
+Access login or a 401 challenge. The check recognizes both and passes with a notice, so the
+Preview still gets its comment, but the check can't tell whether the Preview serves traffic.
 
 <!-- @starter:mcp -->
 

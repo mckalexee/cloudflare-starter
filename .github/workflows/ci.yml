@@ -102,8 +102,8 @@ jobs:
 
       # A variant that drops a half must leave no mention of that half's paths or packages, and
       # `bearer` must leave no mention of the OAuth sign-in. Bearer mode keeps the `OAUTH_KV`
-      # binding name, so the pattern skips `OAUTH_`. A match means a file needs a marker or a swap
-      # in `scripts/prune.ts`.
+      # binding name, so the bearer pattern skips exactly `OAUTH_KV`. A match means a file needs a
+      # marker or a swap in `scripts/prune.ts`.
       - name: Check for leftovers of the dropped half
         env:
           VARIANTS: ${{ matrix.variants }}
@@ -111,11 +111,13 @@ jobs:
           for variant in $VARIANTS; do
             case "$variant" in
               mcp-only) pattern='(^|[^.])react|src/web|#web/' ;;
-              app-only) pattern='mcp|oauth|src/auth|#auth/' ;;
+              app-only) pattern='mcp|modelcontextprotocol|oauth|src/auth|#auth/' ;;
               bearer)
-                pattern='oauth([^_]|$)|consent|/callback|GITHUB_CLIENT|ALLOWED_GITHUB|COOKIE_SECRET'
-                pattern+='|MCP_RESOURCE|auth/(provider|routes|authorize|upstream)'
-                pattern+='|github (account|login|sign)|sign in with github'
+                pattern='oauth([^_]|_([^k]|k[^v]|k?$)|$)|consent|/callback|GITHUB_CLIENT'
+                pattern+='|ALLOWED_GITHUB|COOKIE_SECRET|MCP_RESOURCE'
+                pattern+='|auth/(provider|routes|authorize|upstream)'
+                pattern+='|github (account|login|sign)|sign in with github|signed-in (user|caller)'
+                pattern+='|authorization code'
                 ;;
               *) continue ;;
             esac

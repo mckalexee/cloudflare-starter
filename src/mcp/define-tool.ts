@@ -16,7 +16,7 @@ import { HttpError, UpstreamError } from "#lib/errors.ts";
 import { log } from "#lib/log.ts";
 import { ToolInputError } from "#mcp/errors.ts";
 
-/** What a tool handler receives besides its input: the Worker bindings and the signed-in caller. */
+/** What a tool handler receives besides its input: the Worker bindings and the caller. */
 export type ToolContext = {
   env: Env;
   props: AuthProps;

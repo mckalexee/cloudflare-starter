@@ -92,6 +92,14 @@ const BEARER_WORKER_HANDLER = `export default {
 // export in `src/worker.ts`.
 const APP_ONLY_WORKER_HANDLER = `export default appHandler;`;
 
+// Without the consent page, no popup needs `window.opener`, so `src/http/index.ts` keeps Hono's
+// default `Cross-Origin-Opener-Policy`. Both `app-only` and `bearer` swap in this assertion.
+const DEFAULT_OPENER_POLICY_TEST = `    // No popup needs \`window.opener\`, so Hono's default applies.
+    expect(response.headers.get("Cross-Origin-Opener-Policy")).toBe("same-origin");`;
+
+// Without the web app, the Vite build writes to `dist/` instead of React Router's `build/`.
+const MCP_ONLY_BUILD_OUTPUT = `The Worker and its \`wrangler.json\` go to \`dist/ssr/\`, and the static assets to \`dist/client/\`.`;
+
 // Bearer mode replaces the OAuth sentences in `AGENTS.md` and `README.md`.
 const BEARER_AGENTS_INTRO = `\`src/auth/bearer.ts\` guards it with one static bearer token.`;
 const BEARER_README_INTRO = `MCP clients authenticate with one static bearer token.`;
@@ -188,6 +196,7 @@ const VARIANTS: Record<Variant, VariantSpec> = {
     // lint override only adds the web app's imports to the root rule, so it goes too. The note
     // about the web app's Access vars in `docs/auth.md` goes for the same reason.
     swaps: [
+      { file: "docs/deploy.md", anchor: "go to `build/server/`", content: MCP_ONLY_BUILD_OUTPUT },
       { file: AGENTS, anchor: "never import `src/web`", content: "" },
       { file: "docs/conventions.md", anchor: "never import `src/web`", content: "" },
       { file: "docs/auth.md", anchor: "belong to the web app's identity gate", content: "" },
@@ -214,6 +223,11 @@ const VARIANTS: Record<Variant, VariantSpec> = {
     scripts: {},
     swaps: [
       { file: "src/worker.ts", anchor: "createProviderCache(", content: APP_ONLY_WORKER_HANDLER },
+      {
+        file: "test/http/healthz.test.ts",
+        anchor: "Cross-Origin-Opener-Policy",
+        content: DEFAULT_OPENER_POLICY_TEST,
+      },
     ],
     swapsCover: [],
   },
@@ -235,6 +249,11 @@ const VARIANTS: Record<Variant, VariantSpec> = {
       { file: "src/worker.ts", anchor: "createProviderCache(", content: BEARER_WORKER_HANDLER },
       { file: "wrangler.jsonc", anchor: `"GITHUB_CLIENT_ID"`, content: BEARER_WRANGLER_SECRETS },
       { file: ".dev.vars.example", anchor: "GITHUB_CLIENT_ID=", content: BEARER_DEV_VARS },
+      {
+        file: "test/http/healthz.test.ts",
+        anchor: "Cross-Origin-Opener-Policy",
+        content: DEFAULT_OPENER_POLICY_TEST,
+      },
       { file: "src/env.ts", anchor: "See your GitHub login", content: BEARER_SCOPE_DESCRIPTIONS },
       { file: "src/env.ts", anchor: "`accessToken` is the user's", content: BEARER_ACCESS_TOKEN },
       {
@@ -383,18 +402,41 @@ function exists(file: string): boolean {
   }
 }
 
-// Whether a file is missing because a variant deletes it, such as `docs/web.md` after `mcp-only`.
-// A swap for that file has nothing to replace when `bearer` runs later, while a swap for any other
-// missing file is stale.
+// Whether a file is missing because an earlier run applied a variant that deletes it, such as
+// `docs/web.md` after `mcp-only`. A swap for that file has nothing to replace when `bearer` runs
+// later. The variant must list the file itself, not a directory that holds it, and every path that
+// it deletes must already be gone, so a mistyped or stale swap path still fails.
 function removedByEarlierVariant(file: string): boolean {
   return (
     !exists(file) &&
-    Object.values(VARIANTS).some((spec) =>
-      spec.paths.some(
-        (removal) => isWithin(file, removal.path) && !(removal.keep ?? []).includes(file),
-      ),
+    Object.values(VARIANTS).some(
+      (spec) =>
+        spec.paths.some((removal) => removal.path === file && removal.keep === undefined) &&
+        spec.paths.every((removal) => onlyKeptPathsRemain(removal.path, removal.keep ?? [])),
     )
   );
+}
+
+// Whether nothing in `dir` survives except the paths in `keep`, which is how the tree looks after a
+// variant deletes `dir` or everything in it but `keep`.
+function onlyKeptPathsRemain(dir: string, keep: readonly string[]): boolean {
+  if (!exists(dir)) {
+    return true;
+  }
+  if (keep.length === 0) {
+    return false;
+  }
+  return readdirSync(path.join(ROOT, dir), { withFileTypes: true }).every((entry) => {
+    const rel = `${dir}/${entry.name}`;
+    if (keep.includes(rel)) {
+      return true;
+    }
+    return (
+      entry.isDirectory() &&
+      keep.some((kept) => isWithin(kept, rel)) &&
+      onlyKeptPathsRemain(rel, keep)
+    );
+  });
 }
 
 // Whether a path is on disk and this run hasn't planned to delete it.

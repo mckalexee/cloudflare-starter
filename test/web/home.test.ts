@@ -19,7 +19,6 @@ describe("GET /", () => {
     expect(response.headers.get("X-Frame-Options")).toBe("DENY");
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(response.headers.get("Content-Security-Policy")).toBeNull();
-    expect(response.headers.get("Cross-Origin-Opener-Policy")).toBeNull();
     expect(response.headers.get("Strict-Transport-Security")).toBeNull();
   });
 });

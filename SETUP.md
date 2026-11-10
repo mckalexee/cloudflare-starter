@@ -464,7 +464,9 @@ gh variable set DEPLOY_ENABLED --body true
 ```
 
 For a private web app on `workers.dev`, leave out `HEALTHCHECK_URL`. Access answers `/healthz`
-there instead of the Worker, so the deploy workflow's health check can't reach it.
+there instead of the Worker, so the deploy workflow's health check can't reach it. Access covers
+the Previews too, so the Preview workflow's health check passes with a notice that Access
+answered.
 
 Confirm with `gh secret list` that both secrets exist before you continue.
 

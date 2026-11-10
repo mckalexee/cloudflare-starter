@@ -49,12 +49,11 @@ export function createApp() {
       // The consent page sends `DENY` too, and Hono's `SAMEORIGIN` would overwrite its value.
       // @starter:end
       xFrameOptions: "DENY",
-      // `Cross-Origin-Opener-Policy: same-origin` would cut the `window.opener` link between a page
-      // and a popup that it opens on another origin.
       // @starter:oauth
-      // MCP clients can open the consent page in a popup and wait on it through that link.
-      // @starter:end
+      // MCP clients can open the consent page in a popup and wait on it through `window.opener`.
+      // `Cross-Origin-Opener-Policy: same-origin` would cut that link for the rest of the flow.
       crossOriginOpenerPolicy: false,
+      // @starter:end
       // HSTS belongs in the zone's SSL/TLS settings. With `includeSubDomains`, a value sent from
       // this Worker would also bind every other host on the domain.
       strictTransportSecurity: false,

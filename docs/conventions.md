@@ -25,7 +25,7 @@ listing or a description of a function signature. Duplicated facts drift apart o
 
 <!-- @starter:mcp -->
 
-- `mcp` holds the MCP server and its tools, and `auth` holds the token check for the MCP
+- `mcp` holds the MCP server and its tools, and `auth` holds the authentication for the MCP
   endpoint.
 
 <!-- @starter:end -->
@@ -101,7 +101,7 @@ Comments explain intent. The code already says what it does.
   field. It's the only module allowed to call `console`.
 - Name each event with a short, stable, dotted string, such as `http.unhandled_error`. Put the
   detail in fields, not in the event name.
-- Never log tokens, secrets, cookies, or authorization codes. Log a user ID or a login when you
+- Never log tokens, secrets, cookies, or other credentials. Log a user ID or a login when you
   need to identify who made a request.
 
 <!-- @starter:mcp -->

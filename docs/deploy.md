@@ -6,11 +6,16 @@ the build output that Wrangler deploys.
 
 ## Build output
 
-`pnpm build` runs the Vite build. The Cloudflare Vite plugin writes the deployable Worker and an
-output `wrangler.json` to `build/server/`, the static assets to `build/client/`, and a redirect
-file, `.wrangler/deploy/config.json`, that points at `build/server/wrangler.json`. `wrangler
-deploy` and `wrangler preview` follow the redirect, so they deploy the last build. `wrangler types`
-reads the source `wrangler.jsonc`.
+`pnpm build` runs the Vite build. The Cloudflare Vite plugin writes the deployable Worker, an
+output `wrangler.json`, the static assets, and a redirect file, `.wrangler/deploy/config.json`,
+that points at the output `wrangler.json`. `wrangler deploy` and `wrangler preview` follow the
+redirect, so they deploy the last build. `wrangler types` reads the source `wrangler.jsonc`.
+
+<!-- @starter:web -->
+
+The Worker and its `wrangler.json` go to `build/server/`, and the static assets to `build/client/`.
+
+<!-- @starter:end -->
 
 Always build right before a deploy. A deploy after an edit to `wrangler.jsonc` without a new
 build ships the old configuration. `pnpm run deploy`, `pnpm check:deploy`, and both workflows
@@ -25,8 +30,8 @@ List every secret that the Worker needs in `secrets.required` in `wrangler.jsonc
 three things:
 
 - `wrangler dev` and `pnpm dev` load the listed keys from `.dev.vars`, plus any key named after a
-  var, which overrides that var. They ignore every other key. Without the list, they load every
-  key.
+  var, which overrides that var. They ignore every other key. This filter applies whenever
+  `wrangler.jsonc` has a `secrets` block. Without one, they load every key.
 - `wrangler types` generates the secrets' types from the list, so type generation works in CI
   without a `.dev.vars` file.
 - `wrangler deploy` fails while any listed secret is missing on the Worker.
@@ -41,8 +46,14 @@ pnpm exec wrangler secret bulk /path/to/secrets.env
 If the Worker doesn't exist yet, `wrangler secret bulk` creates it. For one key, use
 `pnpm exec wrangler secret put <KEY>`, which prompts for the value.
 
-The Worker's secrets live on the Worker. GitHub holds only the Cloudflare credentials and any
-Preview secrets.
+The Worker's secrets live on the Worker, and GitHub holds the Cloudflare credentials.
+
+<!-- @starter:mcp -->
+
+GitHub can also hold Preview secrets, which a secrets step in the Preview workflow passes to
+Previews.
+
+<!-- @starter:end -->
 
 ## Previews
 
@@ -53,8 +64,11 @@ from a branch in the same repository. Its URL is
 `{"ok":true}`, and comments the URL on the pull request. Closing the pull request runs
 `wrangler preview delete --name pr-<number> --skip-confirmation`.
 
-Both workflows' `/healthz` checks pass only on that exact response. They don't follow redirects,
-so an Access login redirect fails them.
+Neither workflow's `/healthz` check follows redirects. The deploy workflow's check passes only on
+that exact response, so a Cloudflare Access login fails it. The Preview workflow's check also
+passes, with a notice, when Cloudflare Access answers instead of the Worker, because the workflow
+can't sign in to Access. That Preview still gets its comment, but the check can't tell whether
+the Preview serves traffic.
 
 <!-- @starter:oauth -->
 
@@ -68,16 +82,15 @@ Previews inherit nothing from production:
 - **Vars and bindings:** the `previews` block in `wrangler.jsonc` declares them again. A binding
   that the code uses but the block lacks can fail the Preview with error 1101.
 - **Secrets:** Previews never read production secrets, and `secrets.required` doesn't apply to
-  them. A Preview gets its secrets from three places:
-  - The Preview base config, which every new Preview copies when it's created. Set it with
-    `wrangler preview base-config secret put <KEY>` or `wrangler preview base-config secret bulk
-    <file>`. A later change to the base config reaches only new Previews.
-  - The workflow's secrets file, passed with `--secrets-file`, for each Preview secret set in
-    GitHub.
-  - The previous deployment of the same Preview.
+  them. A Preview keeps the secrets of its previous deployment, and a new Preview copies the
+  Preview base config. Set the base config with `wrangler preview base-config secret put <KEY>` or
+  `wrangler preview base-config secret bulk <file>`. A later change to it reaches only new
+  Previews.
 
 <!-- @starter:mcp -->
 
+- **Secrets from GitHub:** the Preview workflow can also pass a secrets file with
+  `--secrets-file`, holding each Preview secret set in GitHub.
 - **KV:** `previews.kv_namespaces` binds a separate `OAUTH_KV` namespace, so Preview data never
   mixes with production. All Previews share that one namespace.
 

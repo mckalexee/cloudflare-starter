@@ -110,8 +110,8 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 
 <!-- @starter:mcp -->
 
-- `pnpm dev` loads a `.dev.vars` key only if `secrets.required` lists it or a var shares its
-  name. A key that shares a var's name overrides that var. Tests never read `.dev.vars`.
+- `pnpm dev` loads a `.dev.vars` key only if `secrets.required` lists it or it overrides a var.
+  Tests bind fixed values over every var and required secret, so `.dev.vars` doesn't affect them.
 - `McpAgent` is deprecated and banned by oxlint. Serve MCP through `src/mcp/handler.ts`.
 - Per-user KV keys start with `user:<id>:`, so they stay apart from every other record in the
   namespace.

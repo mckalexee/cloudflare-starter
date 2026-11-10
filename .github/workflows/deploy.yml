@@ -106,6 +106,8 @@ jobs:
           url="${HEALTHCHECK_URL%/}/healthz"
           body="$RUNNER_TEMP/healthz.json"
           for attempt in $(seq 1 7); do
+            # A failed connection writes no body, so clear the previous attempt's answer.
+            rm -f "$body"
             status=$(curl -sS --max-time 10 -o "$body" -w '%{http_code}' "$url") || status=000
             if [ "$status" = 200 ] && [ "$(cat "$body")" = '{"ok":true}' ]; then
               exit 0

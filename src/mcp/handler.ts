@@ -21,7 +21,7 @@ export const MCP_ROUTE = "/mcp";
 // Bearer mode has no token scopes, so it sets `scopes` in its props.
 // @starter:oauth
 //
-// With GitHub OAuth, the props come from the grant. `id` is the numeric GitHub account ID. `name`
+// With GitHub OAuth, the props come from the grant. `id` is the GitHub account ID as text. `name`
 // is always a string, because GitHub's display name can be null and the callback stores the login
 // in its place. `accessToken` is the user's GitHub token, for tools that call GitHub as the user.
 //
@@ -29,7 +29,7 @@ export const MCP_ROUTE = "/mcp";
 // token carries the scopes it was issued for, which a token request can narrow.
 // @starter:end
 const propsSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   login: z.string(),
   name: z.string(),
   scopes: z.array(z.string()).optional(),

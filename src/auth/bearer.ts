@@ -13,11 +13,11 @@ export type BearerHandlerOptions = {
   token?: string;
 };
 
-// The token holder is the only user, so it gets every scope and the fixed account ID `0`.
+// The token holder is the only user, so it gets every scope and the fixed account ID `"0"`.
 // @starter:oauth
 // No GitHub account uses `0`, so the owner's per-user data never collides with a GitHub user's.
 // @starter:end
-const OWNER: AuthProps = { id: 0, login: "owner", name: "Owner", scopes: [...SCOPES] };
+const OWNER: AuthProps = { id: "0", login: "owner", name: "Owner", scopes: [...SCOPES] };
 
 let warnedMissingToken = false;
 

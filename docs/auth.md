@@ -161,9 +161,8 @@ tools. The changes common to every OAuth alternative:
   `pnpm typegen`.
 - Change the GitHub wording in `src/auth/consent.ts` ("Next, GitHub asks you to sign in.") and in
   `SCOPE_DESCRIPTIONS` in `src/env.ts`.
-- Change `id` in `AuthProps` in `src/env.ts` and in the props schema in `src/mcp/handler.ts` from
-  a number to a string. Google and Entra user IDs are strings, and a Google `sub` can exceed the
-  largest safe JavaScript integer. Set `id` in `src/auth/bearer.ts` to a string too.
+- Store the provider's user ID as `id`. `id` in `AuthProps` is a string, which fits Google and
+  Entra user IDs, and a Google `sub` can exceed the largest safe JavaScript integer.
 - Keep `ALLOWED_GITHUB_LOGINS` or rename it, such as to `ALLOWED_USERS`. The allowlist matches an
   entry against `login` without case and against `id` exactly, so store the email as `login` and
   list emails. The refresh re-check in `src/auth/provider.ts` reads `login` from the grant.

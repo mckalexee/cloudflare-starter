@@ -91,19 +91,19 @@ A handler receives `(input, { env, props })`.
   handler's server factory doesn't receive the bindings, and passes it to each tool.
 - `props` is the caller as `AuthProps` in `src/env.ts`:
 
-| Field         | Meaning                                                               |
-| ------------- | --------------------------------------------------------------------- |
-| `id`          | The numeric account ID, which never changes. Key per-user data by it. |
-| `login`       | The login, which can change.                                          |
-| `name`        | The display name.                                                     |
-| `scopes`      | The scopes granted to this connection.                                |
-| `accessToken` | An upstream access token for calling an API as the user, if any.      |
+| Field         | Meaning                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| `id`          | The account ID as text. Key per-user data by it.                 |
+| `login`       | The login, which can change.                                     |
+| `name`        | The display name.                                                |
+| `scopes`      | The scopes granted to this connection.                           |
+| `accessToken` | An upstream access token for calling an API as the user, if any. |
 
 `resolveAuthProps()` in `src/mcp/handler.ts` checks the props once per request with a Zod schema
 and drops every field that the schema doesn't name. To carry a new field to the tools, add it to
 `AuthProps`, to that schema, and to the code that creates the props.
 
-Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `0`, the login `owner`,
+Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `"0"`, the login `owner`,
 every scope, and no `accessToken`.
 
 Keep per-user KV keys under `user:<id>:`, as `account_record_visit` does with
@@ -306,7 +306,7 @@ afterEach(() => {
 });
 
 // Props for a user with the `repos` scope and an upstream token.
-const ADA = { id: 1, login: "ada", name: "Ada", scopes: ["repos"], accessToken: "gho_test" };
+const ADA = { id: "1", login: "ada", name: "Ada", scopes: ["repos"], accessToken: "gho_test" };
 
 function clientFor(props: Record<string, unknown>) {
   const handler = createMcpApiHandler({ authContext: { props } });

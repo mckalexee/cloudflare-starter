@@ -43,6 +43,21 @@ pnpm tail                            # stream the deployed Worker's live logs
   `.github/workflows/deploy.yml` once the repository variable `DEPLOY_ENABLED` is `true`.
 - Each pull request gets a Worker Preview named `pr-<number>`, and a comment with its URL.
 
+## How to work
+
+- Build in small steps: one tool, route, or upstream call at a time. Run `pnpm verify`, then
+  commit. Don't end a session with work that isn't committed, and say in your last message what
+  is deployed and what isn't.
+- Ask for a credential before you write the code that needs it. Call the real service while you
+  build, and capture its responses as test fixtures. A client written from documentation alone
+  can't be checked.
+- When you need something from the user, ask for one thing in a message that holds only that
+  request, with the exact command or page. Do everything that doesn't depend on the answer
+  first.
+- If your tool can run subagents, give them the reading: API documentation, endpoint probing,
+  and large responses. Ask for the conclusion, such as a response shape and a captured fixture,
+  and keep the pages out of your own context.
+
 ## Layout
 
 `src/worker.ts` is the composition root, the only module that knows about every area. Import a
@@ -99,8 +114,10 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 3. For a secret, add its name to `secrets.required`, which you create if it's missing, describe
    it in `.dev.vars.example`, and give it a test value in `vitest.config.ts`.
 4. Run `pnpm typegen`.
-5. Tell the user to set the production secret before the next deploy. `wrangler deploy` fails
-   while a required secret is missing. [docs/deploy.md](docs/deploy.md) covers Preview secrets.
+5. Set the production secret before the next deploy, because `wrangler deploy` fails while a
+   required secret is missing. If `.dev.vars` holds the value, upload it yourself with
+   `wrangler secret bulk`. Otherwise, ask the user to add it to `.dev.vars` first.
+   [docs/deploy.md](docs/deploy.md) covers the upload and Preview secrets.
 
 ## Invariants
 

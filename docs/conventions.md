@@ -11,7 +11,7 @@ Each document has one audience. Put information in the first place that fits.
 | ------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `AGENTS.md`   | A coding agent changing the code                                               | Exact commands, invariants that the code can't show, checklists for common changes, and links to `docs/`. Keep it under 120 lines. `CLAUDE.md` is a symlink to it. |
 | `README.md`   | A person deciding whether to use the project, or running it for the first time | What the project does, the stack, how to run it locally, how to connect a client, and where to read more.                                                          |
-| `docs/`       | Anyone who needs the reasoning behind a part of the system                     | One file per topic: conventions, MCP tool design, auth, the web app, deployment, and testing.                                                                      |
+| `docs/`       | Anyone who needs the reasoning behind a part of the system                     | One file per topic, such as conventions, deployment, or testing.                                                                                                   |
 | Code comments | The next person who reads that file                                            | What the file owns, and why a piece of code is written the way it is.                                                                                              |
 
 Leave out anything that a reader can discover from the code in a few seconds, such as a file
@@ -44,12 +44,18 @@ listing or a description of a function signature. Duplicated facts drift apart o
 
 - Tests live in `test/`, in a directory named after the area they cover, as
   `test/<area>/<subject>.test.ts`.
-- Use kebab case for file names, such as `define-tool.ts`. React Router route modules follow
-  the URL, such as `routes/account.tsx`.
+- Use kebab case for file names, such as `define-tool.ts`.
 - Use the `#` subpath import for any module outside the current directory, such as
-  `import { log } from "#lib/log.ts"`. Use a relative import only for a sibling file, for the
-  route types that React Router generates (`./+types/home.ts`), or for a test helper in
-  `test/helpers/` (`../helpers/mcp.ts`), which the `#` import doesn't cover.
+  `import { log } from "#lib/log.ts"`. Use a relative import only for a sibling file, or for a
+  test helper in `test/helpers/` (`../helpers/network.ts`), which the `#` import doesn't cover.
+
+<!-- @starter:web -->
+
+- React Router route modules follow the URL, such as `routes/account.tsx`, and import the route
+  types that React Router generates through a relative path (`./+types/home.ts`).
+
+<!-- @starter:end -->
+
 - Always write the file extension in an import path. Node subpath imports map the specifier
   straight to a file, so the specifier must carry the extension for `#` imports to resolve.
 - Prefer named exports. Use a default export only where a framework requires one, such as a

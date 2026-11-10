@@ -2,9 +2,10 @@
 #
 # - `verify` runs `pnpm verify`, the definition of done: format, lint, typecheck, tests, build,
 #   and a deploy dry run.
-# - `prune` runs `scripts/prune.ts` for each project variant, verifies the result, and checks it
-#   again after `--finish`, so a stale prune list fails here instead of in a new project. It runs
-#   only in the template repository.
+# - `prune` runs `scripts/prune.ts` for each project variant, verifies the result, checks it
+#   again after `--finish`, and looks for mentions of the half that the variant dropped, so a
+#   stale prune list fails here instead of in a new project. It runs only in the template
+#   repository.
 # - `workflows` lints the workflow files with actionlint.
 #
 # Needs no secrets or variables.
@@ -98,6 +99,26 @@ jobs:
       # to run again.
       - name: Check the finished project
         run: pnpm fmt:check && pnpm lint && pnpm typecheck
+
+      # A variant that drops a half must leave no mention of that half's paths or packages. A match
+      # means a file needs a marker or a swap in `scripts/prune.ts`.
+      - name: Check for leftovers of the dropped half
+        env:
+          VARIANTS: ${{ matrix.variants }}
+        run: |
+          for variant in $VARIANTS; do
+            case "$variant" in
+              mcp-only) pattern='(^|[^.])react|src/web|#web/' ;;
+              app-only) pattern='src/(mcp|auth)|#(mcp|auth)/|agents/mcp|@modelcontextprotocol' ;;
+              *) continue ;;
+            esac
+            if grep -rniIE "$pattern" . \
+              --exclude-dir={.git,node_modules,build,dist,.wrangler,.react-router} \
+              --exclude={pnpm-lock.yaml,worker-configuration.d.ts}; then
+              echo "::error::The $variant variant leaves the matches above behind."
+              exit 1
+            fi
+          done
 
   workflows:
     name: Lint the workflow files

@@ -82,7 +82,7 @@ describe("account_record_visit", () => {
     const first = await client.callTool("account_record_visit");
     const second = await client.callTool("account_record_visit");
 
-    // Bearer mode has no GitHub token for the owner.
+    // Bearer mode has no upstream token for the owner.
     expect(first.structuredContent).toMatchObject({
       login: "owner",
       name: "Owner",

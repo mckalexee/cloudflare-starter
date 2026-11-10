@@ -1,7 +1,7 @@
 # Copy this file to `.dev.vars` for local development.
 # @starter:mcp
-# Wrangler loads only the keys listed in `secrets.required` in `wrangler.jsonc`, so a key that
-# isn't in that list is ignored here.
+# Wrangler ignores a key here unless `secrets.required` in `wrangler.jsonc` lists it or a var has
+# its name. A key with a var's name overrides that var locally.
 # @starter:end
 
 # @starter:oauth

@@ -7,7 +7,8 @@
 # - Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, in the repository or in the
 #   `production` environment.
 # - Optional variable `HEALTHCHECK_URL`, the Worker's base URL without a trailing slash, such as
-#   `https://example.com`. When it's set, the job checks `/healthz` after the deploy.
+#   `https://example.com`. When it's set, the job checks that `/healthz` answers 200 with
+#   `{"ok":true}` after the deploy.
 # @starter:oauth
 #   It also checks that an unauthenticated `POST /mcp` gets the OAuth sign-in challenge.
 # @starter:end
@@ -100,9 +101,23 @@ jobs:
         env:
           HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
         run: |
-          # A new version can take a few seconds to reach every location, so retry briefly.
-          curl -fsS --max-time 10 --retry 6 --retry-delay 5 --retry-all-errors \
-            "${HEALTHCHECK_URL%/}/healthz"
+          # A new version can take a few seconds to reach every location, so retry briefly. curl
+          # doesn't follow redirects here, so an Access login redirect fails the check.
+          url="${HEALTHCHECK_URL%/}/healthz"
+          body="$RUNNER_TEMP/healthz.json"
+          for attempt in $(seq 1 7); do
+            # A failed connection writes no body, so clear the previous attempt's answer.
+            rm -f "$body"
+            status=$(curl -sS --max-time 10 -o "$body" -w '%{http_code}' "$url") || status=000
+            if [ "$status" = 200 ] && [ "$(cat "$body")" = '{"ok":true}' ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 7 ]; then
+              sleep 5
+            fi
+          done
+          echo "::error title=Health check failed::$url didn't answer 200 with {\"ok\":true} after 7 attempts. The last status was $status."
+          exit 1
 
       # @starter:oauth
       # An unauthenticated MCP request must get the OAuth challenge that points clients at the

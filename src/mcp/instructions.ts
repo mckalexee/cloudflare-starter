@@ -7,7 +7,7 @@ import { tools } from "#mcp/tools/index.ts";
 const toolList = tools.map((tool) => `- ${tool.name}: ${tool.title}.`).join("\n");
 
 /** Server instructions returned in the `initialize` result. */
-export const INSTRUCTIONS = `This server is a starting point for an MCP server on Cloudflare Workers. It acts for one signed-in user.
+export const INSTRUCTIONS = `This server is a starting point for an MCP server on Cloudflare Workers. It acts for the user behind each connection.
 
 It has these tools:
 ${toolList}

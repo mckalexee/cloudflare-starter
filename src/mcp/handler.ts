@@ -15,16 +15,19 @@ import { createServer } from "#mcp/server.ts";
 /** The path that serves MCP requests. Requests to any other path get a 404 response. */
 export const MCP_ROUTE = "/mcp";
 
-// Props come from the OAuth grant or bearer mode as an untyped record, so they're
-// checked here once instead of in every tool. Extra fields are dropped, so anything else in the
-// grant reaches tool code only when you add it here. `id` is the numeric GitHub account ID, the
-// stable key for per-user data. `name` is always a string, because GitHub's display name can be
-// null and the callback stores the login in its place. `accessToken` is the user's GitHub token,
-// for tools that call GitHub as the user. Keep it out of logs and tool results.
+// Props arrive as an untyped record, so they're checked here once instead of in every tool. Extra
+// fields are dropped, so anything else in the props reaches tool code only when you add it here.
+// `id` is the stable key for per-user data. Keep `accessToken` out of logs and tool results.
+// Bearer mode has no token scopes, so it sets `scopes` in its props.
+// @starter:oauth
 //
-// OAuth grant props must never carry `scopes`. The grant keeps the props it was created with,
-// while each token carries the scopes it was issued for, which a token request can narrow. Only the
-// bearer mode, which has no token scopes, sets `scopes` in its props.
+// With GitHub OAuth, the props come from the grant. `id` is the numeric GitHub account ID. `name`
+// is always a string, because GitHub's display name can be null and the callback stores the login
+// in its place. `accessToken` is the user's GitHub token, for tools that call GitHub as the user.
+//
+// Grant props must never carry `scopes`. The grant keeps the props it was created with, while each
+// token carries the scopes it was issued for, which a token request can narrow.
+// @starter:end
 const propsSchema = z.object({
   id: z.number(),
   login: z.string(),
@@ -34,9 +37,9 @@ const propsSchema = z.object({
 });
 
 /**
- * Returns the caller for the current request. Scopes come from the validated access token when
- * the OAuth provider supplies one, and otherwise from the props, as in bearer mode. `props`
- * defaults to the props of the current MCP request, and tests pass their own.
+ * Returns the caller for the current request. Scopes come from `tokenScopes`, the scopes of a
+ * validated access token, when there are any, and otherwise from the props, as in bearer mode.
+ * `props` defaults to the props of the current MCP request, and tests pass their own.
  */
 export function resolveAuthProps(
   tokenScopes: readonly string[] | undefined,
@@ -58,7 +61,7 @@ export function resolveAuthProps(
 
 /** Options for `createMcpApiHandler`. */
 export type McpApiHandlerOptions = {
-  /** Fixed props for every request, which replace the props the OAuth provider sets. */
+  /** Fixed props for every request, such as the owner's props in bearer mode. */
   authContext?: McpAuthContext;
   /**
    * Hostnames that the `Host` header may name. The default accepts `localhost` and the Worker's

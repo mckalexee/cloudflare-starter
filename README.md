@@ -108,7 +108,7 @@ For MCP sign-in, set up GitHub OAuth before you start the dev server:
    describes the app. Generate `COOKIE_SECRET` with `openssl rand -hex 32`.
 
 3. In `wrangler.jsonc`, set `ALLOWED_GITHUB_LOGINS` under `vars` to your GitHub login. The empty
-   default admits no one, and `.dev.vars` can't override a var.
+   default admits no one. An `ALLOWED_GITHUB_LOGINS` entry in `.dev.vars` overrides it locally.
 
 Without a GitHub OAuth app, everything except MCP sign-in works.
 

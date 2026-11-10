@@ -196,7 +196,7 @@ under `previews.vars` for Previews. Set both unless the list says otherwise.
 - `MCP_RESOURCE` (GitHub OAuth): set the top-level value to `https://<host>/mcp`. Leave the
   `previews.vars` value empty, because each Preview derives its own.
 - `ALLOWED_GITHUB_LOGINS` (GitHub OAuth): the allowed accounts from the inputs, in both places.
-  Local sign-in needs it too, because `.dev.vars` can't override a var.
+  Local sign-in reads it too, unless `.dev.vars` sets its own value.
 - `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` (private web app): leave them empty for now. Step 12 sets
   them.
 
@@ -464,7 +464,9 @@ gh variable set DEPLOY_ENABLED --body true
 ```
 
 For a private web app on `workers.dev`, leave out `HEALTHCHECK_URL`. Access answers `/healthz`
-there instead of the Worker, so the deploy workflow's health check can't reach it.
+there instead of the Worker, so the deploy workflow's health check can't reach it. Access covers
+the Previews too, so the Preview workflow's health check passes with a notice that Access
+answered.
 
 Confirm with `gh secret list` that both secrets exist before you continue.
 

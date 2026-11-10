@@ -1,5 +1,7 @@
-# Deploys a Worker Preview named `pr-<number>` for each pull request, checks that it serves
-# traffic, and comments its URL on the pull request. Closing the pull request deletes the Preview.
+# Deploys a Worker Preview named `pr-<number>` for each pull request, checks that its `/healthz`
+# answers 200 with `{"ok":true}`, and comments its URL on the pull request. When Cloudflare Access
+# answers instead of the Worker, the check passes with a notice. Closing the pull request deletes
+# the Preview.
 #
 # Needs:
 # - Variable `DEPLOY_ENABLED` set to `true`. Until then both jobs are skipped.
@@ -99,18 +101,41 @@ jobs:
           fi
           echo "url=${url%/}" >> "$GITHUB_OUTPUT"
 
-      # A new Preview can take a few seconds to answer, so poll for up to 60 seconds.
+      # A new Preview can take a few seconds to answer, so poll up to 12 times, 5 seconds apart.
+      # curl doesn't follow redirects here. When Cloudflare Access protects the Previews, Access
+      # answers instead of the Worker: a redirect to its login page for a browser, or a 401
+      # challenge for other clients. The workflow can't sign in, so it reports a notice and passes.
+      # Any other answer fails the check.
       - name: Check /healthz
         env:
           URL: ${{ steps.preview.outputs.url }}
         run: |
-          for _ in $(seq 1 12); do
-            if curl -fsS --max-time 10 "$URL/healthz"; then
+          body="$RUNNER_TEMP/healthz.json"
+          headers="$RUNNER_TEMP/healthz-headers.txt"
+          for attempt in $(seq 1 12); do
+            # A failed connection writes neither file, so clear the previous attempt's answer.
+            rm -f "$body" "$headers"
+            status=$(curl -sS --max-time 10 -o "$body" -D "$headers" -w '%{http_code}' \
+              "$URL/healthz") || status=000
+            if [ "$status" = 200 ] && [ "$(cat "$body")" = '{"ok":true}' ]; then
               exit 0
             fi
-            sleep 5
+            location=$(awk 'tolower($1) == "location:" { print $2 }' "$headers" 2>/dev/null |
+              tr -d '\r' | tail -n 1)
+            host=${location#*://}
+            host=${host%%/*}
+            if { [ "$status" = 302 ] && [[ "$host" == *.cloudflareaccess.com ]]; } ||
+              { [ "$status" = 401 ] &&
+                grep -qi '^www-authenticate:.*cloudflare-access-protected-resource' "$headers"; }
+            then
+              echo "::notice title=Preview behind Access::Cloudflare Access answered $URL/healthz instead of the Worker, so the check can't confirm that the Preview serves traffic."
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then
+              sleep 5
+            fi
           done
-          echo "::error title=Preview unreachable::$URL/healthz didn't answer within 60 seconds."
+          echo "::error title=Preview unhealthy::$URL/healthz didn't answer 200 with {\"ok\":true} in 12 attempts. The last status was $status."
           exit 1
 
       # @starter:oauth

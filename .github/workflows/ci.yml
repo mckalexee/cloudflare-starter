@@ -3,9 +3,9 @@
 # - `verify` runs `pnpm verify`, the definition of done: format, lint, typecheck, tests, build,
 #   and a deploy dry run.
 # - `prune` runs `scripts/prune.ts` for each project variant, verifies the result, checks it
-#   again after `--finish`, and looks for mentions of the half that the variant dropped, so a
-#   stale prune list fails here instead of in a new project. It runs only in the template
-#   repository.
+#   again after `--finish`, and looks for mentions of the half that the variant dropped, or of
+#   OAuth after `bearer`, so a stale prune list fails here instead of in a new project. It runs
+#   only in the template repository.
 # - `workflows` lints the workflow files with actionlint.
 #
 # Needs no secrets or variables.
@@ -100,8 +100,10 @@ jobs:
       - name: Check the finished project
         run: pnpm fmt:check && pnpm lint && pnpm typecheck
 
-      # A variant that drops a half must leave no mention of that half's paths or packages. A match
-      # means a file needs a marker or a swap in `scripts/prune.ts`.
+      # A variant that drops a half must leave no mention of that half's paths or packages, and
+      # `bearer` must leave no mention of the OAuth sign-in. Bearer mode keeps the `OAUTH_KV`
+      # binding name, so the bearer pattern skips exactly `OAUTH_KV`. A match means a file needs a
+      # marker or a swap in `scripts/prune.ts`.
       - name: Check for leftovers of the dropped half
         env:
           VARIANTS: ${{ matrix.variants }}
@@ -109,7 +111,14 @@ jobs:
           for variant in $VARIANTS; do
             case "$variant" in
               mcp-only) pattern='(^|[^.])react|src/web|#web/' ;;
-              app-only) pattern='src/(mcp|auth)|#(mcp|auth)/|agents/mcp|@modelcontextprotocol' ;;
+              app-only) pattern='mcp|modelcontextprotocol|oauth|src/auth|#auth/' ;;
+              bearer)
+                pattern='oauth([^_]|_([^k]|k[^v]|k?$)|$)|consent|/callback|GITHUB_CLIENT'
+                pattern+='|ALLOWED_GITHUB|COOKIE_SECRET|MCP_RESOURCE'
+                pattern+='|auth/(provider|routes|authorize|upstream)'
+                pattern+='|github (account|login|sign)|sign in with github|signed-in (user|caller)'
+                pattern+='|authorization code'
+                ;;
               *) continue ;;
             esac
             if grep -rniIE "$pattern" . \

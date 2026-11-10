@@ -258,7 +258,8 @@ the hostname.
 
 A self-hosted application needs a hostname on a zone in your account, so Worker-level Access is
 how you protect a site on its `workers.dev` hostname. It covers `/healthz` too, with no bypass,
-so leave the `HEALTHCHECK_URL` repository variable unset.
+so leave the `HEALTHCHECK_URL` repository variable unset. It also covers Previews, so the Preview
+workflow's `/healthz` check fails on them.
 
 <!-- @starter:mcp -->
 

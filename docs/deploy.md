@@ -49,9 +49,12 @@ Preview secrets.
 `.github/workflows/preview.yml` deploys a Worker Preview named `pr-<number>` for each pull request
 from a branch in the same repository. Its URL is
 `https://pr-<number>-<worker>.<subdomain>.workers.dev`. The workflow builds, runs
-`wrangler preview --name pr-<number> --json`, polls `/healthz`, and comments the URL on the pull
-request. Closing the pull request runs `wrangler preview delete --name pr-<number>
---skip-confirmation`.
+`wrangler preview --name pr-<number> --json`, polls `/healthz` until it answers 200 with
+`{"ok":true}`, and comments the URL on the pull request. Closing the pull request runs
+`wrangler preview delete --name pr-<number> --skip-confirmation`.
+
+Both workflows' `/healthz` checks pass only on that exact response. They don't follow redirects,
+so an Access login redirect fails them.
 
 <!-- @starter:oauth -->
 

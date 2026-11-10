@@ -2,19 +2,24 @@
 
 This page covers how to design an MCP tool for this server, how `defineTool` registers it, how a
 tool reaches the caller and the Worker bindings, and how to test it. It ends with a worked
-example of a tool that calls GitHub as the signed-in user.
+example of a tool that calls GitHub with the user's token.
 
 ## How a request reaches a tool
 
 1. An MCP client sends a JSON-RPC request to `POST /mcp` with an access token.
-2. In OAuth mode, the OAuth provider in `src/auth/provider.ts` validates the token and hands the
-   request to `mcpApiHandler` in `src/mcp/handler.ts`. In bearer mode, `src/auth/bearer.ts`
-   checks the static token instead.
+2. The token check in `src/auth` passes the request to the MCP handler in `src/mcp/handler.ts`.
 3. The handler wraps the stateless `createMcpHandler` from `agents/mcp/server`. For every request,
    it builds a fresh server with `createServer()` from `src/mcp/server.ts`, so no state outlives
    the request.
 4. `createServer()` registers every tool in the `tools` array of `src/mcp/tools/index.ts`, each
    with the same `ToolContext`: the Worker bindings and the caller's props.
+
+<!-- @starter:oauth -->
+
+With GitHub OAuth, the OAuth provider in `src/auth/provider.ts` validates the token and calls
+`mcpApiHandler`. In bearer mode, `src/auth/bearer.ts` checks the static token instead.
+
+<!-- @starter:end -->
 
 `McpAgent` from `agents/mcp` is deprecated, and oxlint rejects any import of it.
 
@@ -63,8 +68,8 @@ Worker's own KV namespace isn't open world.
 ### Scope
 
 Set `scope` when a tool reads or changes the user's data. The scopes are listed in `SCOPES` in
-`src/env.ts`, and each one needs a sentence in `SCOPE_DESCRIPTIONS`, which the consent page shows.
-Describe what the scope allows, not what today's tools do with it.
+`src/env.ts`, and each one needs a sentence in `SCOPE_DESCRIPTIONS`. Describe what the scope
+allows, not what today's tools do with it.
 
 ## How `defineTool` works
 
@@ -86,20 +91,20 @@ A handler receives `(input, { env, props })`.
   handler's server factory doesn't receive the bindings, and passes it to each tool.
 - `props` is the caller as `AuthProps` in `src/env.ts`:
 
-| Field         | Meaning                                                                        |
-| ------------- | ------------------------------------------------------------------------------ |
-| `id`          | The numeric GitHub account ID, which never changes. Key per-user data by it.   |
-| `login`       | The GitHub login. It changes when the user renames their account.              |
-| `name`        | The display name. When GitHub has none, the callback stores the login instead. |
-| `scopes`      | The scopes granted to this token, which can be fewer than the grant's.         |
-| `accessToken` | The user's GitHub access token. Absent in bearer mode.                         |
+| Field         | Meaning                                                               |
+| ------------- | --------------------------------------------------------------------- |
+| `id`          | The numeric account ID, which never changes. Key per-user data by it. |
+| `login`       | The login, which can change.                                          |
+| `name`        | The display name.                                                     |
+| `scopes`      | The scopes granted to this connection.                                |
+| `accessToken` | An upstream access token for calling an API as the user, if any.      |
 
 `resolveAuthProps()` in `src/mcp/handler.ts` checks the props once per request with a Zod schema
 and drops every field that the schema doesn't name. To carry a new field to the tools, add it to
 `AuthProps`, to that schema, and to the code that creates the props.
 
-Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `0`, the login `owner`, and
-every scope.
+Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `0`, the login `owner`,
+every scope, and no `accessToken`.
 
 Keep per-user KV keys under `user:<id>:`, as `account_record_visit` does with
 `user:<id>:visits`.
@@ -107,8 +112,10 @@ Keep per-user KV keys under `user:<id>:`, as `account_record_visit` does with
 <!-- @starter:oauth -->
 
 With GitHub OAuth, `src/auth/upstream/github.ts` creates the props when it calls
-`completeAuthorization()`. The OAuth provider keeps its grants and tokens in the same KV
-namespace as the per-user keys.
+`completeAuthorization()`. `id` and `login` come from the user's GitHub account, `name` falls back
+to the login when GitHub has none, and `accessToken` is the user's GitHub token. A token's
+`scopes` can be fewer than the grant's. The OAuth provider keeps its grants and tokens in the same
+KV namespace as the per-user keys.
 
 ## Call GitHub as the user
 
@@ -160,8 +167,8 @@ requests. [testing.md](testing.md) describes the helpers.
 
 ## Worked example: list the user's repositories
 
-This tool lists the signed-in user's GitHub repositories. It adds a scope, calls GitHub with the
-user's token, and returns structured content.
+This tool lists the user's GitHub repositories. It adds a scope, calls GitHub with the user's
+token, and returns structured content.
 
 Bearer mode has no upstream token, so this tool's GitHub call always fails there with "This
 connection has no GitHub token." In bearer mode, follow the same steps with a handler that uses
@@ -176,7 +183,7 @@ In `src/env.ts`:
 export const SCOPES = ["profile", "repos"] as const;
 
 export const SCOPE_DESCRIPTIONS: Record<Scope, string> = {
-  profile: "See your GitHub login and name.",
+  // The existing entries stay.
   repos: "See your GitHub repositories.",
 };
 ```
@@ -186,8 +193,8 @@ export const SCOPE_DESCRIPTIONS: Record<Scope, string> = {
 Create `src/mcp/tools/repositories.ts`:
 
 ```ts
-// Lists the signed-in user's GitHub repositories. It's the example of a tool that calls an
-// upstream API as the user, with the GitHub token from the OAuth grant.
+// Lists the user's GitHub repositories. It's the example of a tool that calls an upstream API as
+// the user, with the token in `props.accessToken`.
 import { z } from "zod";
 
 import { HttpError } from "#lib/errors.ts";
@@ -208,9 +215,9 @@ export const listRepositories = defineTool({
   name: "github_list_repositories",
   title: "List repositories",
   description:
-    "Lists the signed-in user's GitHub repositories, most recently updated first. Call it to " +
-    "find a repository's full name, such as `octocat/hello-world`. `limit` sets how many to " +
-    "return. It changes nothing. The result contains each repository's full name, " +
+    "Lists the user's GitHub repositories, most recently updated first. Call it to find a " +
+    "repository's full name, such as `octocat/hello-world`. `limit` sets how many to return. " +
+    "It changes nothing. The result contains each repository's full name, " +
     "description, URL, visibility, and last update time.",
   scope: "repos",
   effect: "read",
@@ -298,7 +305,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// The props that the OAuth provider would set for a signed-in user with the `repos` scope.
+// Props for a user with the `repos` scope and an upstream token.
 const ADA = { id: 1, login: "ada", name: "Ada", scopes: ["repos"], accessToken: "gho_test" };
 
 function clientFor(props: Record<string, unknown>) {

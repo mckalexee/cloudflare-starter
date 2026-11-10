@@ -57,8 +57,9 @@ function write(level: Level, event: string, fields: Fields): void {
 }
 
 /**
- * Writes structured log lines. The event is a short, stable name such as `ssr.stream_error`, and
- * the fields carry request-specific detail. Never pass tokens, secrets, or OAuth props.
+ * Writes structured log lines. The event is a short, stable name such as `http.unhandled_error`,
+ * and the fields carry request-specific detail. Never pass tokens, secrets, cookies, or other
+ * credentials.
  */
 export const log = {
   debug: (event: string, fields: Fields = {}) => write("debug", event, fields),

@@ -24,8 +24,9 @@ the configuration without an account. It's the last step of `pnpm verify`.
 List every secret that the Worker needs in `secrets.required` in `wrangler.jsonc`. The list does
 three things:
 
-- `wrangler dev` and `pnpm dev` load only the listed keys from `.dev.vars`. Any other key in that
-  file is ignored, and a `.dev.vars` entry can't override a var.
+- `wrangler dev` and `pnpm dev` load the listed keys from `.dev.vars`, plus any key named after a
+  var, which overrides that var. They ignore every other key. Without the list, they load every
+  key.
 - `wrangler types` generates the secrets' types from the list, so type generation works in CI
   without a `.dev.vars` file.
 - `wrangler deploy` fails while any listed secret is missing on the Worker.
@@ -40,8 +41,8 @@ pnpm exec wrangler secret bulk /path/to/secrets.env
 If the Worker doesn't exist yet, `wrangler secret bulk` creates it. For one key, use
 `pnpm exec wrangler secret put <KEY>`, which prompts for the value.
 
-The Worker's secrets live on the Worker. GitHub holds only the Cloudflare credentials, and the
-Preview secrets that the Preview workflow passes along.
+The Worker's secrets live on the Worker. GitHub holds only the Cloudflare credentials and any
+Preview secrets.
 
 ## Previews
 
@@ -94,9 +95,9 @@ and the oldest deployment when a Preview reaches its deployment limit.
 
 ### Bearer mode on Previews
 
-In bearer mode, the Preview workflow has no step that writes the secrets file, because that step
-maps the OAuth secrets. To pass a Preview token from GitHub, add a repository secret named
-`PREVIEW_MCP_BEARER_TOKEN` and add this step before **Deploy the Preview**:
+In bearer mode, the Preview workflow has no step that writes the secrets file. To pass a Preview
+token from GitHub, add a repository secret named `PREVIEW_MCP_BEARER_TOKEN` and add this step
+before **Deploy the Preview**:
 
 ```yaml
 - name: Write the Preview secrets file
@@ -129,21 +130,43 @@ exist. Pull requests from forks never get a Preview, because their runs can't re
 
 The workflows read these secrets and variables:
 
-| Name                           | Kind     | Used by                     | Purpose                                                                                             |
-| ------------------------------ | -------- | --------------------------- | --------------------------------------------------------------------------------------------------- |
-| `DEPLOY_ENABLED`               | Variable | `deploy.yml`, `preview.yml` | Set to `true` to turn on deploys and Previews.                                                      |
-| `CLOUDFLARE_API_TOKEN`         | Secret   | `deploy.yml`, `preview.yml` | The API token that Wrangler uses.                                                                   |
-| `CLOUDFLARE_ACCOUNT_ID`        | Secret   | `deploy.yml`, `preview.yml` | The account to deploy to.                                                                           |
-| `HEALTHCHECK_URL`              | Variable | `deploy.yml`                | Optional. The Worker's base URL without a trailing slash. The job checks `/healthz` after a deploy. |
-| `PREVIEW_GITHUB_CLIENT_ID`     | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `GITHUB_CLIENT_ID`.                                                 |
-| `PREVIEW_GITHUB_CLIENT_SECRET` | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `GITHUB_CLIENT_SECRET`.                                             |
-| `PREVIEW_COOKIE_SECRET`        | Secret   | `preview.yml`, GitHub OAuth | Optional. Passed to Previews as `COOKIE_SECRET`.                                                    |
-| `PREVIEW_MCP_BEARER_TOKEN`     | Secret   | `preview.yml`, bearer mode  | Optional, after you add the Preview secrets step for bearer mode. Passed as `MCP_BEARER_TOKEN`.     |
+| Name                    | Kind     | Used by                     | Purpose                                                                                             |
+| ----------------------- | -------- | --------------------------- | --------------------------------------------------------------------------------------------------- |
+| `DEPLOY_ENABLED`        | Variable | `deploy.yml`, `preview.yml` | Set to `true` to turn on deploys and Previews.                                                      |
+| `CLOUDFLARE_API_TOKEN`  | Secret   | `deploy.yml`, `preview.yml` | The API token that Wrangler uses.                                                                   |
+| `CLOUDFLARE_ACCOUNT_ID` | Secret   | `deploy.yml`, `preview.yml` | The account to deploy to.                                                                           |
+| `HEALTHCHECK_URL`       | Variable | `deploy.yml`                | Optional. The Worker's base URL without a trailing slash. The job checks `/healthz` after a deploy. |
 
-GitHub reserves the `GITHUB_` prefix for its own secrets, which is why the Preview secrets carry
-a `PREVIEW_` prefix. Set the secrets in the repository, or in the `production` and `preview`
-environments that the deploy and Preview jobs use. A Preview secret that isn't set in GitHub
-comes from the base config or from the previous deployment of the same Preview.
+<!-- @starter:oauth -->
+
+With GitHub OAuth, `preview.yml` also reads these optional secrets, and passes each one that's set
+to Previews under the name in the second column. GitHub reserves the `GITHUB_` prefix for its own
+secrets, which is why the Preview secrets carry a `PREVIEW_` prefix.
+
+| Secret                         | Passed to Previews as  |
+| ------------------------------ | ---------------------- |
+| `PREVIEW_GITHUB_CLIENT_ID`     | `GITHUB_CLIENT_ID`     |
+| `PREVIEW_GITHUB_CLIENT_SECRET` | `GITHUB_CLIENT_SECRET` |
+| `PREVIEW_COOKIE_SECRET`        | `COOKIE_SECRET`        |
+
+<!-- @starter:end -->
+
+<!-- @starter:mcp -->
+
+In bearer mode, the step that you add in [Bearer mode on Previews](#bearer-mode-on-previews)
+reads the optional secret `PREVIEW_MCP_BEARER_TOKEN` and passes it as `MCP_BEARER_TOKEN`.
+
+<!-- @starter:end -->
+
+Set the secrets in the repository, or in the `production` and `preview` environments that the
+deploy and Preview jobs use.
+
+<!-- @starter:mcp -->
+
+A Preview secret that isn't set in GitHub comes from the base config or from the previous
+deployment of the same Preview.
+
+<!-- @starter:end -->
 
 ## Roll back
 
@@ -167,7 +190,7 @@ account, with these permissions:
 | Permission                                      | Why                                                                                                |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | **Account** > **Workers Scripts** > **Edit**    | Deploy the Worker, and create and delete its Previews.                                             |
-| **Account** > **Workers KV Storage** > **Edit** | MCP endpoint kept. Previews need edit access to the resources they use.                            |
+| **Account** > **Workers KV Storage** > **Edit** | Only with a KV binding. Previews need edit access to the resources they use.                       |
 | **Account** > **Account Settings** > **Read**   | The token that Cloudflare generates for Workers Builds includes it. Wrangler's docs don't list it. |
 | **Zone** > **Workers Routes** > **Edit**        | Only with a custom domain, scoped to its zone, to attach the domain.                               |
 
@@ -211,7 +234,7 @@ that you registered.
 
 <!-- @starter:end -->
 
-<!-- @starter:mcp -->
+<!-- @starter:oauth -->
 
 `createMcpApiHandler()` in `src/mcp/handler.ts` checks the `Host` header only on `localhost` and
 `workers.dev` by default. To apply the check on the custom domain, pass `allowedHostnames` where

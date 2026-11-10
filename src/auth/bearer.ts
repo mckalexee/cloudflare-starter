@@ -1,6 +1,5 @@
-// Bearer mode: the single-user alternative to OAuth. The MCP endpoint accepts one static
-// token from the `MCP_BEARER_TOKEN` secret and treats every request that presents it as the
-// owner.
+// Bearer mode, where the MCP endpoint serves a single user. It accepts one static token from the
+// `MCP_BEARER_TOKEN` secret and treats every request that presents it as the owner.
 import { SCOPES, type AuthProps } from "#env.ts";
 import { log } from "#lib/log.ts";
 import { createMcpApiHandler } from "#mcp/handler.ts";
@@ -14,8 +13,10 @@ export type BearerHandlerOptions = {
   token?: string;
 };
 
-// The token holder is the only user, so it gets every scope. It has no GitHub account, so its ID
-// is `0`, which no GitHub account uses.
+// The token holder is the only user, so it gets every scope and the fixed account ID `0`.
+// @starter:oauth
+// No GitHub account uses `0`, so the owner's per-user data never collides with a GitHub user's.
+// @starter:end
 const OWNER: AuthProps = { id: 0, login: "owner", name: "Owner", scopes: [...SCOPES] };
 
 let warnedMissingToken = false;

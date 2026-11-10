@@ -110,8 +110,8 @@ Change these together: the tool modules in `src/mcp/tools/` and their tests in `
 
 <!-- @starter:mcp -->
 
-- `secrets.required` filters `.dev.vars`: only the listed keys load, and a `.dev.vars` entry
-  can't override a `vars` value. Change local vars in `wrangler.jsonc`.
+- `pnpm dev` loads a `.dev.vars` key only if `secrets.required` lists it or a var shares its
+  name. A key that shares a var's name overrides that var. Tests never read `.dev.vars`.
 - `McpAgent` is deprecated and banned by oxlint. Serve MCP through `src/mcp/handler.ts`.
 - Per-user KV keys start with `user:<id>:`, so they stay apart from every other record in the
   namespace.

@@ -1,10 +1,14 @@
-// Types and constants that describe the signed-in caller, shared by the MCP server and the auth
+// Types and constants that describe the MCP caller, shared by the MCP server and the auth
 // code. The Worker bindings themselves come from `worker-configuration.d.ts`, which
 // `wrangler types` generates from `wrangler.jsonc`.
 
+// @starter:oauth
+// The OAuth provider advertises `SCOPES` to clients, and the consent page shows each scope's entry
+// in `SCOPE_DESCRIPTIONS` to the person who approves it.
+// @starter:end
+
 /**
- * Every OAuth scope this server grants. The OAuth provider advertises this list, and a tool that
- * declares a scope runs only when the caller's token carries it.
+ * Every scope this server grants. A tool that declares a scope runs only when the caller holds it.
  */
 export const SCOPES = ["profile"] as const;
 
@@ -12,34 +16,43 @@ export const SCOPES = ["profile"] as const;
 export type Scope = (typeof SCOPES)[number];
 
 /**
- * What each scope lets a client do, in words for the person who approves it on the consent page.
- * Describe what the scope allows rather than what today's tools do with it, so the text stays
- * true as tools change. `Record<Scope, string>` makes a scope without a description a type error.
+ * What each scope lets a client do, in words for a person. Describe what the scope allows rather
+ * than what today's tools do with it, so the text stays true as tools change.
+ * `Record<Scope, string>` makes a scope without a description a type error.
  */
 export const SCOPE_DESCRIPTIONS: Record<Scope, string> = {
+  // @starter:oauth
   profile: "See your GitHub login and name.",
+  // @starter:end
 };
 
+// @starter:oauth
+// With GitHub OAuth, `id`, `login`, and `name` come from the user's GitHub account, and the caller
+// passed the `ALLOWED_GITHUB_LOGINS` check at sign-in and again at each token refresh. Bearer mode
+// uses the ID `0` for its one user.
+// @starter:end
+
 /**
- * The caller as MCP tools see it: a numeric account ID, a GitHub login, a display name, and the
- * scopes granted to the current token. In OAuth mode, the caller passed the
- * `ALLOWED_GITHUB_LOGINS` check at sign-in and again at each token refresh. It's a type alias
- * rather than an interface so that it fits the plain record that `getMcpAuthContext()` carries.
- * Never log it or return it whole from a tool.
+ * The caller as MCP tools see it: a numeric account ID, a login, a display name, and the scopes
+ * granted to the current token. It's a type alias rather than an interface so that it fits the
+ * plain record that `getMcpAuthContext()` carries. Never log it or return it whole from a tool.
  */
 export type AuthProps = {
   /**
-   * The user's numeric GitHub account ID, which never changes. Key per-user data by it, because
-   * the user can rename their login on GitHub. Bearer mode uses `0` for its one user.
+   * The user's numeric account ID, which never changes. Key per-user data by it, because the
+   * login can change.
    */
   id: number;
   login: string;
   name: string;
   scopes: string[];
+  // @starter:oauth
+  // With GitHub OAuth, `accessToken` is the user's GitHub token, which the OAuth provider stores
+  // encrypted with the grant. Bearer mode never sets it.
+  // @starter:end
   /**
-   * The user's GitHub access token, which tools use to call the GitHub API on the user's behalf.
-   * The OAuth provider stores it encrypted with the grant. It's absent in bearer mode.
-   * Never log it or return it from a tool.
+   * An upstream access token, which tools use to call an API on the user's behalf. Never log it
+   * or return it from a tool.
    */
   accessToken?: string;
 };

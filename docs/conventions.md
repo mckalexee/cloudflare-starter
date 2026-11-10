@@ -25,7 +25,8 @@ listing or a description of a function signature. Duplicated facts drift apart o
 
 <!-- @starter:mcp -->
 
-- `mcp` holds the MCP server and its tools, and `auth` holds the sign-in for the MCP endpoint.
+- `mcp` holds the MCP server and its tools, and `auth` holds the token check for the MCP
+  endpoint.
 
 <!-- @starter:end -->
 
@@ -81,8 +82,8 @@ Comments explain intent. The code already says what it does.
 - Define typed error classes in `src/lib/errors.ts` when more than one area handles them, and in
   the area's own `errors.ts` otherwise. Each class carries the information that its caller needs
   to respond, such as an HTTP status or a hint for fixing the input.
-- Throw these classes from the code that detects the problem. Don't build HTTP responses or MCP
-  results deep in the call stack.
+- Throw these classes from the code that detects the problem. Don't build responses deep in the
+  call stack.
 - Map errors to responses at the edges, such as the Hono `onError` handler for HTTP.
 
 <!-- @starter:mcp -->
@@ -98,10 +99,17 @@ Comments explain intent. The code already says what it does.
 
 - Log through `src/lib/log.ts`. It writes one JSON object per line, which Workers Logs indexes by
   field. It's the only module allowed to call `console`.
-- Name each event with a short, stable, dotted string, such as `auth.callback_failed`. Put the
+- Name each event with a short, stable, dotted string, such as `http.unhandled_error`. Put the
   detail in fields, not in the event name.
-- Never log tokens, secrets, cookies, authorization codes, or OAuth props. Log a user ID or a
-  login when you need to identify who made a request.
+- Never log tokens, secrets, cookies, or authorization codes. Log a user ID or a login when you
+  need to identify who made a request.
+
+<!-- @starter:mcp -->
+
+- Never log `AuthProps`, because they can hold the user's upstream access token.
+
+<!-- @starter:end -->
+
 - Log a full URL only when it can't carry a credential. Log the path otherwise.
 
 ## Dependencies

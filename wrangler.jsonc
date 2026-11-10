@@ -35,8 +35,8 @@
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_ID" }],
   // @starter:end
   // @starter:oauth
-  // Wrangler loads only these keys from `.dev.vars`, generates their types, and refuses to
-  // deploy while any of them is missing on the Worker.
+  // From `.dev.vars`, Wrangler loads these keys and any key named after a var, and ignores the
+  // rest. It generates the secrets' types and refuses to deploy while one is missing.
   "secrets": {
     "required": ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "COOKIE_SECRET"],
   },

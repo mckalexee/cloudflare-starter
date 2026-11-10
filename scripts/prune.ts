@@ -111,14 +111,45 @@ claude mcp add --transport http <name> https://<host>/mcp --header "Authorizatio
 \`\`\``;
 
 // The bearer token replaces the OAuth secrets in `wrangler.jsonc` and `.dev.vars.example`.
-const BEARER_WRANGLER_SECRETS = `  // Wrangler loads only these keys from \`.dev.vars\`, generates their types, and refuses to
-  // deploy while any of them is missing on the Worker.
+const BEARER_WRANGLER_SECRETS = `  // From \`.dev.vars\`, Wrangler loads these keys and any key named after a var, and ignores the
+  // rest. It generates the secrets' types and refuses to deploy while one is missing.
   "secrets": {
     "required": ["MCP_BEARER_TOKEN"],
   },`;
 const BEARER_DEV_VARS = `# Token that MCP clients send as \`Authorization: Bearer <token>\`. Generate one with
 # \`openssl rand -hex 32\`.
 MCP_BEARER_TOKEN=`;
+
+// Bearer mode has no consent page and no GitHub account. These replace the OAuth wording in the
+// files that bearer mode keeps.
+const BEARER_SCOPE_DESCRIPTIONS = `  profile: "See your login and name.",`;
+const BEARER_ACCESS_TOKEN = `  // Bearer mode never sets \`accessToken\`.`;
+const BEARER_MCP_TOKEN_CHECK = `In bearer mode, \`src/auth/bearer.ts\` checks the token against the \`MCP_BEARER_TOKEN\` secret.`;
+const BEARER_HOST_CHECK = `\`createMcpApiHandler()\` in \`src/mcp/handler.ts\` checks the \`Host\` header only on \`localhost\` and
+\`workers.dev\` by default. To apply the check on the custom domain, pass \`allowedHostnames\` where
+\`src/auth/bearer.ts\` creates the production handler. Run \`pnpm test\` afterward, because the tests
+send requests to \`localhost\`.`;
+const BEARER_ACCESS_BYPASS = `\`\`\`json
+{
+  "type": "self_hosted",
+  "name": "<name> MCP",
+  "domain": "<host>/mcp",
+  "destinations": [
+    { "type": "public", "uri": "<host>/healthz" },
+    { "type": "public", "uri": "<host>/mcp" }
+  ],
+  "policies": [
+    {
+      "name": "MCP clients",
+      "decision": "bypass",
+      "include": [{ "everyone": {} }]
+    }
+  ]
+}
+\`\`\`
+
+The bypass application leaves those paths open to everyone. That's intended: \`/healthz\` reveals
+nothing, and \`/mcp\` checks the bearer token.`;
 
 const VARIANTS: Record<Variant, VariantSpec> = {
   "mcp-only": {
@@ -154,10 +185,12 @@ const VARIANTS: Record<Variant, VariantSpec> = {
       },
     },
     // The rule that keeps MCP code apart from the web app means nothing without the web app. Its
-    // lint override only adds the web app's imports to the root rule, so it goes too.
+    // lint override only adds the web app's imports to the root rule, so it goes too. The note
+    // about the web app's Access vars in `docs/auth.md` goes for the same reason.
     swaps: [
       { file: AGENTS, anchor: "never import `src/web`", content: "" },
       { file: "docs/conventions.md", anchor: "never import `src/web`", content: "" },
+      { file: "docs/auth.md", anchor: "belong to the web app's identity gate", content: "" },
       { file: ".oxlintrc.json", anchor: `"files": ["src/mcp/**", "src/auth/**"]`, content: "" },
     ],
     swapsCover: [],
@@ -202,6 +235,15 @@ const VARIANTS: Record<Variant, VariantSpec> = {
       { file: "src/worker.ts", anchor: "createProviderCache(", content: BEARER_WORKER_HANDLER },
       { file: "wrangler.jsonc", anchor: `"GITHUB_CLIENT_ID"`, content: BEARER_WRANGLER_SECRETS },
       { file: ".dev.vars.example", anchor: "GITHUB_CLIENT_ID=", content: BEARER_DEV_VARS },
+      { file: "src/env.ts", anchor: "See your GitHub login", content: BEARER_SCOPE_DESCRIPTIONS },
+      { file: "src/env.ts", anchor: "`accessToken` is the user's", content: BEARER_ACCESS_TOKEN },
+      {
+        file: "docs/mcp.md",
+        anchor: "validates the token and calls",
+        content: BEARER_MCP_TOKEN_CHECK,
+      },
+      { file: "docs/deploy.md", anchor: "pass `allowedHostnames`", content: BEARER_HOST_CHECK },
+      { file: "docs/web.md", anchor: "<name> MCP and OAuth", content: BEARER_ACCESS_BYPASS },
       {
         file: AGENTS,
         anchor: "The OAuth provider in `src/auth` guards it",
@@ -339,6 +381,20 @@ function exists(file: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Whether a file is missing because a variant deletes it, such as `docs/web.md` after `mcp-only`.
+// A swap for that file has nothing to replace when `bearer` runs later, while a swap for any other
+// missing file is stale.
+function removedByEarlierVariant(file: string): boolean {
+  return (
+    !exists(file) &&
+    Object.values(VARIANTS).some((spec) =>
+      spec.paths.some(
+        (removal) => isWithin(file, removal.path) && !(removal.keep ?? []).includes(file),
+      ),
+    )
+  );
 }
 
 // Whether a path is on disk and this run hasn't planned to delete it.
@@ -704,7 +760,7 @@ function planVariant(ws: Workspace, variant: Variant, report: Report): void {
     }
   }
   for (const swap of spec.swaps) {
-    if (!usedSwaps.has(swap)) {
+    if (!usedSwaps.has(swap) && !removedByEarlierVariant(swap.file)) {
       errors.push(`${swap.file}: no marked block contains ${swap.anchor}.`);
     }
   }

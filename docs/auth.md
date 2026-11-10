@@ -89,7 +89,8 @@ doesn't, clients can't complete sign-in, because the tokens name a different res
   renames their account.
 
 A refused account gets `access_denied` at sign-in, and `invalid_grant` at refresh. It's a var, so
-set it in `wrangler.jsonc` under both `vars` and `previews.vars`. `.dev.vars` can't override it.
+set it in `wrangler.jsonc` under both `vars` and `previews.vars`. Under `pnpm dev`, a `.dev.vars`
+entry with its name overrides it.
 
 ## Endpoints
 
@@ -129,8 +130,8 @@ Add GitHub scopes there when a tool needs more of the user's GitHub account.
 Each Preview has its own hostname, `pr-<number>-<worker>.<subdomain>.workers.dev`, so its
 callback URL is different for every pull request. Pick one approach:
 
-- **Skip OAuth on Previews.** Don't give Previews the GitHub secrets. A Preview still deploys,
-  serves the web app, and passes the workflow's checks, but MCP sign-in fails there.
+- **Skip OAuth on Previews.** Don't give Previews the GitHub secrets. A Preview still deploys and
+  passes the workflow's checks, but MCP sign-in fails there.
 - **Use a second OAuth app for Previews.** Register `https://<subdomain>.workers.dev/callback` with
   wildcard matching on, which admits every subdomain, and store that app's values as Preview
   secrets. Wildcard matching lets any Worker on the account's `workers.dev` subdomain receive
@@ -168,8 +169,7 @@ tools. The changes common to every OAuth alternative:
   list emails. The refresh re-check in `src/auth/provider.ts` reads `login` from the grant.
 - Replace the GitHub stand-ins in `test/helpers/oauth.ts`. Sign test ID tokens with a key pair
   and serve its public key through MSW.
-- `jose` verifies ID tokens. A project without the web app doesn't depend on it, so add it with
-  `pnpm add -E jose` there.
+- `jose` verifies ID tokens. If `package.json` doesn't list it, add it with `pnpm add -E jose`.
 
 ### Google
 
@@ -303,8 +303,17 @@ The module follows the Google shape: request `openid email profile`, exchange th
 token endpoint with the client secret and the PKCE verifier, and verify the ID token against the
 `/jwks` keys with the issuer URL from step 3 and the client ID as the audience. Use `sub` as `id`
 and as the grant's `userId`, and `email` as `login`. Store the client ID and secret as secrets, such as
-`ACCESS_CLIENT_ID` and `ACCESS_CLIENT_SECRET`, and the issuer as a var. Don't reuse
-`ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`, which belong to the web app's identity gate.
+`ACCESS_CLIENT_ID` and `ACCESS_CLIENT_SECRET`, and the issuer as a var.
+
+<!-- @starter:end -->
+
+<!-- @starter:oauth -->
+
+Don't reuse `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`, which belong to the web app's identity gate.
+
+<!-- @starter:end -->
+
+<!-- @starter:oauth -->
 
 The Access policy already decides who signs in, so `ALLOWED_GITHUB_LOGINS` (or its renamed
 version) can be `*`, or a shorter list for defense in depth.
@@ -315,7 +324,7 @@ version) can be `*`, or a shorter list for defense in depth.
 
 Bearer mode serves one user with one static token instead of a sign-in flow. `src/auth/bearer.ts`
 checks the `Authorization: Bearer <token>` header against the `MCP_BEARER_TOKEN` secret in
-constant time and serves MCP as the owner, with every scope and no GitHub token.
+constant time and serves MCP as the owner, with every scope and no upstream token.
 
 Generate the token with `openssl rand -hex 32`, put it in `.dev.vars` for local use, and upload it
 with `wrangler secret put MCP_BEARER_TOKEN` for production.

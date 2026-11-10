@@ -264,12 +264,15 @@ so leave the `HEALTHCHECK_URL` repository variable unset.
 
 ### Both halves on one hostname
 
-Worker-level Access would block `/mcp`, the OAuth endpoints, and the discovery documents, and MCP
-clients can't complete an Access login, so a private web app next to MCP needs a custom domain.
-On that hostname, use two self-hosted applications instead: the allow application, and a bypass
-application for the health check and the MCP and OAuth paths. Access applies the most specific
-match first, so the bypass application wins on its paths and the allow application covers
-everything else. `bypass-app.json`:
+Worker-level Access would block every path that MCP clients use, and MCP clients can't complete
+an Access login, so a private web app next to MCP needs a custom domain. On that hostname, use two
+self-hosted applications instead: the allow application, and a bypass application for the health
+check and the MCP paths. Access applies the most specific match first, so the bypass application
+wins on its paths and the allow application covers everything else. `bypass-app.json`:
+
+<!-- @starter:end -->
+
+<!-- @starter:oauth -->
 
 ```json
 {
@@ -298,6 +301,10 @@ everything else. `bypass-app.json`:
 The bypass application leaves those paths open to everyone. That's intended: `/healthz` reveals
 nothing, and the consent page, the token endpoint, and `/mcp` do their own checks.
 
+<!-- @starter:end -->
+
+<!-- @starter:mcp -->
+
 ### Both halves on two hostnames
 
 Alternatively, serve the Worker on two custom domains, such as `app.example.com` for the web app
@@ -305,10 +312,19 @@ and `mcp.example.com` for MCP clients:
 
 1. Add both to `routes` in `wrangler.jsonc` with `custom_domain: true`.
 2. Create one allow application on `app.example.com`, and none on `mcp.example.com`.
-3. With GitHub OAuth, set `MCP_RESOURCE` to `https://mcp.example.com/mcp` and register
-   `https://mcp.example.com/callback` with GitHub.
-4. Set the `HEALTHCHECK_URL` repository variable to `https://mcp.example.com`, which Access
+3. Set the `HEALTHCHECK_URL` repository variable to `https://mcp.example.com`, which Access
    doesn't cover.
+
+<!-- @starter:end -->
+
+<!-- @starter:oauth -->
+
+With GitHub OAuth, also set `MCP_RESOURCE` to `https://mcp.example.com/mcp` and register
+`https://mcp.example.com/callback` with GitHub.
+
+<!-- @starter:end -->
+
+<!-- @starter:mcp -->
 
 The web pages also answer on `mcp.example.com`. Requests there carry no Access JWT, so private
 pages answer 403 while public pages render.

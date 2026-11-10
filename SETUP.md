@@ -196,7 +196,7 @@ under `previews.vars` for Previews. Set both unless the list says otherwise.
 - `MCP_RESOURCE` (GitHub OAuth): set the top-level value to `https://<host>/mcp`. Leave the
   `previews.vars` value empty, because each Preview derives its own.
 - `ALLOWED_GITHUB_LOGINS` (GitHub OAuth): the allowed accounts from the inputs, in both places.
-  Local sign-in needs it too, because `.dev.vars` can't override a var.
+  Local sign-in reads it too, unless `.dev.vars` sets its own value.
 - `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` (private web app): leave them empty for now. Step 12 sets
   them.
 

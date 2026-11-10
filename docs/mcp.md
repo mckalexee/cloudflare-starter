@@ -6,8 +6,8 @@ example of a tool that calls GitHub with the user's token.
 
 ## How a request reaches a tool
 
-1. An MCP client sends a JSON-RPC request to `POST /mcp` with an access token.
-2. The token check in `src/auth` passes the request to the MCP handler in `src/mcp/handler.ts`.
+1. An MCP client sends a JSON-RPC request to `POST /mcp` with its credentials.
+2. The sign-in check in `src/auth` passes the request to the MCP handler in `src/mcp/handler.ts`.
 3. The handler wraps the stateless `createMcpHandler` from `agents/mcp/server`. For every request,
    it builds a fresh server with `createServer()` from `src/mcp/server.ts`, so no state outlives
    the request.
@@ -91,19 +91,19 @@ A handler receives `(input, { env, props })`.
   handler's server factory doesn't receive the bindings, and passes it to each tool.
 - `props` is the caller as `AuthProps` in `src/env.ts`:
 
-| Field         | Meaning                                                               |
-| ------------- | --------------------------------------------------------------------- |
-| `id`          | The numeric account ID, which never changes. Key per-user data by it. |
-| `login`       | The login, which can change.                                          |
-| `name`        | The display name.                                                     |
-| `scopes`      | The scopes granted to this connection.                                |
-| `accessToken` | An upstream access token for calling an API as the user, if any.      |
+| Field         | Meaning                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| `id`          | The account ID as text. Key per-user data by it.                 |
+| `login`       | The login, which can change.                                     |
+| `name`        | The display name.                                                |
+| `scopes`      | The scopes granted to this connection.                           |
+| `accessToken` | An upstream access token for calling an API as the user, if any. |
 
 `resolveAuthProps()` in `src/mcp/handler.ts` checks the props once per request with a Zod schema
 and drops every field that the schema doesn't name. To carry a new field to the tools, add it to
 `AuthProps`, to that schema, and to the code that creates the props.
 
-Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `0`, the login `owner`,
+Bearer mode has one user, `OWNER` in `src/auth/bearer.ts`, with `id` `"0"`, the login `owner`,
 every scope, and no `accessToken`.
 
 Keep per-user KV keys under `user:<id>:`, as `account_record_visit` does with
@@ -155,6 +155,14 @@ Pick the client that fits the test:
 - **Bearer mode:** `createBearerHandler({ token })` from `src/auth/bearer.ts` serves MCP as
   the owner.
 
+<!-- @starter:access -->
+
+- **Cloudflare Access sign-in:** `accessRoutes.fetch()` from `src/auth/access.ts`, with a token
+  from `createAccessIssuer()` in `test/helpers/access.ts`, serves MCP as the token's email, as
+  `test/auth/access.test.ts` does.
+
+<!-- @starter:end -->
+
 <!-- @starter:oauth -->
 
 - **The whole OAuth flow:** `createOAuthMcpClient(await mintAccessToken())` calls `/mcp` through
@@ -170,10 +178,14 @@ requests. [testing.md](testing.md) describes the helpers.
 This tool lists the user's GitHub repositories. It adds a scope, calls GitHub with the user's
 token, and returns structured content.
 
+<!-- @starter:mcp -->
+
 Bearer mode has no upstream token, so this tool's GitHub call always fails there with "This
 connection has no GitHub token." In bearer mode, follow the same steps with a handler that uses
 only its input and this Worker's bindings, as `example_echo_message` and `account_record_visit`
 do.
+
+<!-- @starter:end -->
 
 ### 1. Add the scope
 
@@ -306,7 +318,7 @@ afterEach(() => {
 });
 
 // Props for a user with the `repos` scope and an upstream token.
-const ADA = { id: 1, login: "ada", name: "Ada", scopes: ["repos"], accessToken: "gho_test" };
+const ADA = { id: "1", login: "ada", name: "Ada", scopes: ["repos"], accessToken: "gho_test" };
 
 function clientFor(props: Record<string, unknown>) {
   const handler = createMcpApiHandler({ authContext: { props } });

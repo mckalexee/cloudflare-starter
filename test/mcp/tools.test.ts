@@ -90,13 +90,13 @@ describe("account_record_visit", () => {
     });
     const firstVisits = Number(first.structuredContent?.visits);
     expect(second.structuredContent?.visits).toBe(firstVisits + 1);
-    // Bearer mode gives the owner the account ID 0.
+    // Bearer mode gives the owner the account ID "0".
     expect(await env.OAUTH_KV.get("user:0:visits")).toBe(String(firstVisits + 1));
   });
 
   it("returns a tool error with a fix when the caller lacks the profile scope", async () => {
     const handler = createMcpApiHandler({
-      authContext: { props: { id: 42, login: "guest", name: "Guest", scopes: [] } },
+      authContext: { props: { id: "42", login: "guest", name: "Guest", scopes: [] } },
     });
     const client = createMcpClient((request) => handler(request, env, createExecutionContext()));
 

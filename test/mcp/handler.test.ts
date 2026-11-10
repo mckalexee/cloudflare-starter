@@ -14,38 +14,44 @@ afterEach(() => {
 
 describe("resolveAuthProps", () => {
   it("throws when the props don't match the expected shape", () => {
-    expect(() => resolveAuthProps(undefined, { id: 1, login: "ada" })).toThrow(
+    expect(() => resolveAuthProps(undefined, { id: "1", login: "ada" })).toThrow(
       /no valid auth props/,
     );
     expect(() => resolveAuthProps(undefined, undefined)).toThrow(/no valid auth props/);
   });
 
-  it("throws when the props have no numeric account ID", () => {
+  it("throws when the props have no usable account ID", () => {
     expect(() => resolveAuthProps(undefined, { login: "ada", name: "Ada" })).toThrow(
       /no valid auth props/,
     );
-    expect(() => resolveAuthProps(undefined, { id: "1", login: "ada", name: "Ada" })).toThrow(
+    expect(() => resolveAuthProps(undefined, { id: 1.5, login: "ada", name: "Ada" })).toThrow(
       /no valid auth props/,
     );
   });
 
+  it("turns a numeric account ID from older props into the same text", () => {
+    expect(resolveAuthProps(undefined, { id: 583231, login: "ada", name: "Ada" }).id).toBe(
+      "583231",
+    );
+  });
+
   it("uses the token's scopes over the scopes in the props", () => {
-    const props = { id: 1, login: "ada", name: "Ada", scopes: ["profile", "admin"] };
+    const props = { id: "1", login: "ada", name: "Ada", scopes: ["profile", "admin"] };
 
     expect(resolveAuthProps([], props).scopes).toEqual([]);
     expect(resolveAuthProps(["profile"], props).scopes).toEqual(["profile"]);
   });
 
   it("falls back to the scopes in the props when the token has none", () => {
-    const props = { id: 1, login: "ada", name: "Ada", scopes: ["profile"] };
+    const props = { id: "1", login: "ada", name: "Ada", scopes: ["profile"] };
 
     expect(resolveAuthProps(undefined, props).scopes).toEqual(["profile"]);
-    expect(resolveAuthProps(undefined, { id: 1, login: "ada", name: "Ada" }).scopes).toEqual([]);
+    expect(resolveAuthProps(undefined, { id: "1", login: "ada", name: "Ada" }).scopes).toEqual([]);
   });
 
   it("drops fields that the schema doesn't name", () => {
     const props = {
-      id: 1,
+      id: "1",
       login: "ada",
       name: "Ada",
       accessToken: "gho_x",
@@ -53,7 +59,7 @@ describe("resolveAuthProps", () => {
     };
 
     expect(resolveAuthProps(["profile"], props)).toEqual({
-      id: 1,
+      id: "1",
       login: "ada",
       name: "Ada",
       scopes: ["profile"],

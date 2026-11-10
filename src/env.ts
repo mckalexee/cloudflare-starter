@@ -27,22 +27,26 @@ export const SCOPE_DESCRIPTIONS: Record<Scope, string> = {
 };
 
 // @starter:oauth
-// With GitHub OAuth, `id`, `login`, and `name` come from the user's GitHub account, and the caller
-// passed the `ALLOWED_GITHUB_LOGINS` check at sign-in and again at each token refresh. Bearer mode
-// uses the ID `0` for its one user.
+// With GitHub OAuth, `id` is the GitHub account ID as text, `login` and `name` come from the same
+// account, and the caller passed the `ALLOWED_GITHUB_LOGINS` check at sign-in and again at each
+// token refresh. Bearer mode uses the ID `"0"` for its one user.
+// @starter:end
+// @starter:access
+// With Cloudflare Access sign-in, `id` and `login` are the email address that Access verified, in
+// lowercase.
 // @starter:end
 
 /**
- * The caller as MCP tools see it: a numeric account ID, a login, a display name, and the scopes
+ * The caller as MCP tools see it: an account ID, a login, a display name, and the scopes
  * granted to the current token. It's a type alias rather than an interface so that it fits the
  * plain record that `getMcpAuthContext()` carries. Never log it or return it whole from a tool.
  */
 export type AuthProps = {
   /**
-   * The user's numeric account ID, which never changes. Key per-user data by it, because the
-   * login can change.
+   * The user's account ID as text. Key per-user data by it, because in some sign-in modes the
+   * login can change while the ID stays the same.
    */
-  id: number;
+  id: string;
   login: string;
   name: string;
   scopes: string[];

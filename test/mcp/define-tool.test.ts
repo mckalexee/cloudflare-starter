@@ -21,7 +21,7 @@ afterEach(() => {
 function clientWith(tool: ToolRegistration) {
   const handler = createMcpHandler(() => {
     const server = new McpServer({ name: "test", version: "0.0.0" });
-    tool.register(server, { env, props: { id: 1, login: "tester", name: "Tester", scopes: [] } });
+    tool.register(server, { env, props: { id: "1", login: "tester", name: "Tester", scopes: [] } });
     return server;
   });
   return createMcpClient((request) => handler(request, env, createExecutionContext()));

@@ -1,6 +1,10 @@
 // The HTTP face of the MCP server. It wraps the stateless `createMcpHandler` from `agents` so that
 // every request on `/mcp` gets a fresh server built with the Worker bindings and the caller's
 // props. Bearer mode in `src/auth/bearer.ts` builds its own handler with fixed props.
+// @starter:access
+// Cloudflare Access sign-in in `src/auth/access.ts` builds one per request with the props of the
+// person that Access verified.
+// @starter:end
 // @starter:oauth
 // The OAuth provider calls `mcpApiHandler` after it validates the access token.
 // @starter:end
@@ -18,10 +22,12 @@ export const MCP_ROUTE = "/mcp";
 // Props arrive as an untyped record, so they're checked here once instead of in every tool. Extra
 // fields are dropped, so anything else in the props reaches tool code only when you add it here.
 // `id` is the stable key for per-user data. Keep `accessToken` out of logs and tool results.
-// Bearer mode has no token scopes, so it sets `scopes` in its props.
+// A sign-in mode without token scopes, such as bearer mode, sets `scopes` in its props. Props stored
+// before `id` became a string carry a number, which is turned into the same text, so those
+// sessions keep working and keep their per-user keys.
 // @starter:oauth
 //
-// With GitHub OAuth, the props come from the grant. `id` is the numeric GitHub account ID. `name`
+// With GitHub OAuth, the props come from the grant. `id` is the GitHub account ID as text. `name`
 // is always a string, because GitHub's display name can be null and the callback stores the login
 // in its place. `accessToken` is the user's GitHub token, for tools that call GitHub as the user.
 //
@@ -29,7 +35,7 @@ export const MCP_ROUTE = "/mcp";
 // token carries the scopes it was issued for, which a token request can narrow.
 // @starter:end
 const propsSchema = z.object({
-  id: z.number(),
+  id: z.union([z.string(), z.number().int().transform(String)]),
   login: z.string(),
   name: z.string(),
   scopes: z.array(z.string()).optional(),
@@ -73,8 +79,15 @@ export type McpApiHandlerOptions = {
    * Hostnames that a browser `Origin` header may name. The default accepts `localhost` and the
    * Worker's `workers.dev` hostname. Requests without an `Origin`, which non-browser MCP clients
    * send, always pass. Add your custom domain when a browser-based client connects from it.
+   * `"*"` turns the check off, for a caller that runs a stricter `Origin` check of its own.
    */
-  allowedOriginHostnames?: string[];
+  allowedOriginHostnames?: string[] | "*";
+  /**
+   * Whether responses carry CORS headers. The default allows every origin to read them. Pass
+   * `false` when a browser's cookies can authenticate a request, so no other site can read the
+   * responses.
+   */
+  cors?: boolean;
 };
 
 /**
@@ -94,6 +107,7 @@ export function createMcpApiHandler(options: McpApiHandlerOptions = {}) {
       ...(options.allowedOriginHostnames !== undefined && {
         allowedOriginHostnames: options.allowedOriginHostnames,
       }),
+      ...(options.cors === false && { corsOptions: false }),
       // The handler answers a thrown error with a generic JSON-RPC error and reports it here,
       // which is the only place that it surfaces.
       onerror: (error) => log.error("mcp.handler_error", { error }),

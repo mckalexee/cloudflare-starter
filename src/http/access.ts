@@ -1,11 +1,20 @@
-// Cloudflare Access identity for the HTTP layer and the web app. It resolves who made a request
-// and gates private routes. Whether a site is private is runtime configuration, not code: a public
-// site keeps this file and leaves `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` empty, and then every route
-// serves without an identity.
+// Cloudflare Access identity. It resolves who made a request from what Access forwards, and accepts
+// an identity only for the Access application that `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` name.
+// @starter:web
+// It also gates the web app's private routes. Whether the site is private is runtime
+// configuration, not code: `WEB_ACCESS` is `public` or `private`.
+// @starter:end
+// @starter:mcp
+// Cloudflare Access sign-in for MCP, in `src/auth/access.ts`, resolves its callers here.
+// @starter:end
+// @starter:web
 import { createMiddleware } from "hono/factory";
+// @starter:end
 import { createRemoteJWKSet, errors, jwtVerify } from "jose";
 
+// @starter:web
 import { HttpError, UpstreamError } from "#lib/errors.ts";
+// @starter:end
 import { log } from "#lib/log.ts";
 
 /** The signed-in person behind a request, as Cloudflare Access reports them. */
@@ -14,6 +23,7 @@ export interface Identity {
   name?: string;
 }
 
+// @starter:web
 /** Hono context variables that `requireIdentity()` sets. */
 export interface AccessVariables {
   /** The identity of the request, or `null` when it has none. */
@@ -25,8 +35,9 @@ export interface AccessEnv {
   Bindings: Env;
   Variables: AccessVariables;
 }
+// @starter:end
 
-/** The Access settings of a private site. */
+/** The Access application that every accepted identity belongs to. */
 interface AccessConfig {
   /** Team domain without a scheme, such as `myteam.cloudflareaccess.com`. */
   teamDomain: string;
@@ -35,9 +46,8 @@ interface AccessConfig {
 }
 
 /**
- * Returns the Access settings when the site is private, or `null` when it is public. A site is
- * private when both `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set. Setting only one throws, so a
- * half-configured site fails closed instead of serving private routes to everyone.
+ * Returns the Access settings, or `null` when `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are both
+ * empty. Setting only one throws, so a half-configured Worker fails closed instead of guessing.
  */
 export function accessConfig(env: Env): AccessConfig | null {
   const teamDomain = env.ACCESS_TEAM_DOMAIN.replace(/^https:\/\//, "").replace(/\/+$/, "");
@@ -64,24 +74,26 @@ function keySetFor(teamDomain: string) {
   return keySet;
 }
 
-let warnedUnconfigured = false;
-
+// @starter:web
 /**
- * Returns whether a private route needs an identity, which is when the site is private. On a
- * public site it returns `false` and logs `access.unconfigured` once per isolate, so a deployment
- * that lost its Access vars shows up in the logs instead of quietly serving private routes to
- * everyone.
+ * Returns whether a private route needs an identity. `WEB_ACCESS` set to `private` makes the site
+ * private, and then both Access vars must be set. Any other value throws, and so does `private`
+ * without the Access vars, so a typo or a lost var fails closed instead of serving private routes
+ * to everyone. `public` turns the gate off, whatever the Access vars hold.
  */
 export function identityRequired(env: Env): boolean {
-  if (accessConfig(env) !== null) {
-    return true;
+  if (env.WEB_ACCESS === "public") {
+    return false;
   }
-  if (!warnedUnconfigured) {
-    warnedUnconfigured = true;
-    log.warn("access.unconfigured");
+  if (env.WEB_ACCESS !== "private") {
+    throw new Error(`WEB_ACCESS must be "public" or "private", not "${env.WEB_ACCESS}".`);
   }
-  return false;
+  if (accessConfig(env) === null) {
+    throw new Error("WEB_ACCESS is private, so set ACCESS_TEAM_DOMAIN and ACCESS_AUD.");
+  }
+  return true;
 }
+// @starter:end
 
 // These codes mean that the certificates endpoint failed, not that the token is bad.
 const KEY_SET_FAILURES = new Set([
@@ -102,8 +114,8 @@ async function identityFromToken(token: string, config: AccessConfig): Promise<I
       // Seconds of clock skew to accept between Access and the Worker.
       clockTolerance: 5,
     });
-    // A service token has no `email` claim, so it carries no identity and private routes reject
-    // it. To accept service tokens, build an identity from the `common_name` claim here.
+    // A service token has no `email` claim, so it carries no identity and every identity check
+    // rejects it. To accept service tokens, build an identity from the `common_name` claim here.
     return typeof payload.email === "string" ? { email: payload.email } : null;
   } catch (error) {
     // `jose` lets a failed request for the certificates through unwrapped, so anything that isn't
@@ -120,7 +132,8 @@ async function identityFromToken(token: string, config: AccessConfig): Promise<I
 }
 
 // `ctx.access` exists only when Cloudflare Access protects the Worker itself and no static assets
-// router sits in front of it, or under `wrangler dev` with `access.dev`. Its absence is normal.
+// router sits in front of it, or under `pnpm dev`, which fakes it from the `access.dev` block in
+// `wrangler.jsonc`. Its absence is normal.
 // Hono types its execution context without `access`, so this check reads it from any object.
 function isAccessContext(value: unknown): value is CloudflareAccessContext {
   return (
@@ -136,18 +149,30 @@ function accessContextOf(ctx: object): CloudflareAccessContext | undefined {
 }
 
 /**
- * Resolves the identity of a request. It uses `ctx.access` when the runtime provides it.
- * Otherwise, on a private site, it verifies the `Cf-Access-Jwt-Assertion` header against the
- * team's signing keys. It returns `null` on a public site, and when the token is missing or
- * invalid. `ctx` is the execution context of the request, from Hono or from the Worker entry.
+ * Resolves the identity of a request. It returns `null` when the Access vars are empty, and when
+ * the request has no identity from the configured application. It uses `ctx.access` when the
+ * runtime provides it, and accepts it only when its `aud` equals `ACCESS_AUD`. Otherwise it
+ * verifies the `Cf-Access-Jwt-Assertion` header against the team's signing keys, with the same
+ * audience. `ctx` is the execution context of the request, from Hono or from the Worker entry.
  */
 export async function resolveIdentity(
   request: Request,
   env: Env,
   ctx: object,
 ): Promise<Identity | null> {
+  const config = accessConfig(env);
+  if (!config) {
+    return null;
+  }
+
   const access = accessContextOf(ctx);
   if (access) {
+    // Under `pnpm dev`, `aud` comes from `access.dev` in `wrangler.jsonc`, so local requests get
+    // an identity only when that value equals `ACCESS_AUD`.
+    if (access.aud !== config.aud) {
+      log.warn("access.token_rejected", { reason: "aud_mismatch" });
+      return null;
+    }
     const identity = await access.getIdentity();
     if (identity?.email === undefined) {
       return null;
@@ -157,14 +182,11 @@ export async function resolveIdentity(
       : { email: identity.email, name: identity.name };
   }
 
-  const config = accessConfig(env);
-  if (!config) {
-    return null;
-  }
   const token = request.headers.get("cf-access-jwt-assertion");
   return token ? identityFromToken(token, config) : null;
 }
 
+// @starter:web
 /**
  * Hono middleware that resolves the identity and stores it as the `identity` variable. On a
  * private site, it rejects a request without an identity with a 403 response. On a public site,
@@ -181,3 +203,4 @@ export function requireIdentity() {
     await next();
   });
 }
+// @starter:end

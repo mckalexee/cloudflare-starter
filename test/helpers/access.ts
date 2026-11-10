@@ -6,7 +6,7 @@ import { exportJWK, exportSPKI, generateKeyPair, type JWTPayload, SignJWT } from
 import { http, HttpResponse, type HttpHandler } from "msw";
 import { afterEach } from "vitest";
 
-/** Application Audience (AUD) tag that tests configure for a private site. */
+/** Application Audience (AUD) tag that tests configure for the Access application. */
 export const AUD = "starter-test-aud";
 
 const KEY_ID = "starter-test-key";
@@ -91,3 +91,19 @@ export function useAccessVars(): (teamDomain: string, aud: string) => void {
     env.ACCESS_AUD = aud;
   };
 }
+
+// @starter:web
+/**
+ * Lets a test file change `WEB_ACCESS`, the same way as `useAccessVars()`. The hook restores the
+ * value from `wrangler.jsonc` after each test.
+ */
+export function useWebAccess(): (value: string) => void {
+  const original = env.WEB_ACCESS;
+  afterEach(() => {
+    env.WEB_ACCESS = original;
+  });
+  return (value) => {
+    env.WEB_ACCESS = value;
+  };
+}
+// @starter:end

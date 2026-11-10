@@ -71,15 +71,17 @@ only `/`.
 
 `resolveIdentity()` in `src/http/access.ts` checks two sources:
 
-1. `ctx.access`, when the runtime provides it. Cloudflare's documentation says that local
-   development with `wrangler dev` or the Cloudflare Vite plugin, which `pnpm dev` runs,
-   simulates it from the `access.dev` block in `wrangler.jsonc`. In production, only a Worker
-   without static assets that Access protects directly receives it.
+1. `ctx.access`, when the runtime provides it and its `aud` equals `ACCESS_AUD`. Cloudflare's
+   documentation says that local development with `wrangler dev` or the Cloudflare Vite plugin,
+   which `pnpm dev` runs, simulates it from the `access.dev` block in `wrangler.jsonc`, so set
+   `access.dev.aud` to the same value as `ACCESS_AUD` to get the fake identity locally. In
+   production, only a Worker without static assets that Access protects directly receives it.
 2. Otherwise, the `Cf-Access-Jwt-Assertion` header, which it verifies with `jose` against the
    team's signing keys at `https://<team>/cdn-cgi/access/certs`, with the issuer
    `https://<team>`, the audience `ACCESS_AUD`, and the RS256 algorithm.
 
-In production, this Worker serves static assets, and the assets router in front of it doesn't
+With both Access vars empty, it returns `null` from either source. In production, this Worker
+serves static assets, and the assets router in front of it doesn't
 pass `ctx.access` to the Worker. That's why `access.ts` verifies the JWT itself. A token without
 an `email` claim, such as a Cloudflare Access service token's, counts as no identity, so private
 routes reject it. To accept service tokens, build an identity from the `common_name` claim in
@@ -87,20 +89,30 @@ routes reject it. To accept service tokens, build an identity from the `common_n
 
 ## Public and private sites
 
-Whether the site is private is configuration, not code:
+Whether the site is private is configuration, not code. The `WEB_ACCESS` var decides it:
 
-| `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` | Result                                                                                                      |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Both empty                            | Public site. Every route renders without an identity, and `access.unconfigured` is logged once per isolate. |
-| Both set                              | Private site. Routes outside `PUBLIC_PATHS` and `/api/me` need a valid Access JWT.                          |
-| Only one set                          | Configuration error. Requests that check identity fail with a 500 response, so the site fails closed.       |
+| `WEB_ACCESS`  | Result                                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `public`      | Public site. Every route renders without requiring an identity. A route still sees the identity when Access forwards one.                  |
+| `private`     | Private site. Routes outside `PUBLIC_PATHS` and `/api/me` need a valid Access JWT. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` must both be set. |
+| Anything else | Configuration error. Requests that check identity fail with a 500 response, so the site fails closed.                                      |
 
-Set the vars at the top level of `wrangler.jsonc` and again in `previews.vars`, because Previews
-inherit nothing. [Cloudflare Access applications](#cloudflare-access-applications) covers the
-applications that put the site behind a login, and which AUD each block needs.
+`private` with an empty Access var is a configuration error too.
 
-A public site can keep `src/http/access.ts` and the middleware as they are. The empty vars turn
-the gate off.
+<!-- @starter:mcp -->
+
+`WEB_ACCESS` is separate from the Access vars, because Cloudflare Access sign-in for MCP needs them
+on a public site too.
+
+<!-- @starter:end -->
+
+Set the vars at the top level of `wrangler.jsonc` and again in `previews.vars`, with the same
+`WEB_ACCESS` in both, because Previews inherit nothing.
+[Cloudflare Access applications](#cloudflare-access-applications) covers the applications that put
+the site behind a login, and which AUD each block needs.
+
+A public site can keep `src/http/access.ts` and the middleware as they are. `WEB_ACCESS` set to
+`public` turns the gate off.
 
 ## Bindings in loaders
 
@@ -204,7 +216,8 @@ Set `ACCESS_TEAM_DOMAIN` to the team domain, such as `myteam.cloudflareaccess.co
 dashboard shows it under **Settings** > **Team name and domain**. Through the API,
 `GET /accounts/<account-id>/access/organizations` returns it as `result.auth_domain`. That call
 needs a token with **Access: Organizations Read** or **Access: Organizations, Identity Providers,
-and Groups Read**. Set `ACCESS_AUD` to the `aud` of the allow application.
+and Groups Read**. Set `ACCESS_AUD` to the `aud` of the allow application, and `WEB_ACCESS` to
+`private`.
 
 ### The allow application
 
@@ -266,11 +279,16 @@ whether a Preview serves traffic.
 
 ### Both halves on one hostname
 
-Worker-level Access would block every path that MCP clients use, and MCP clients can't complete
-an Access login, so a private web app next to MCP needs a custom domain. On that hostname, use two
-self-hosted applications instead: the allow application, and a bypass application for the health
-check and the MCP paths. Access applies the most specific match first, so the bypass application
-wins on its paths and the allow application covers everything else. `bypass-app.json`:
+With Cloudflare Access sign-in, one allow application covers both halves, as the
+[Access layouts](auth.md#access-layouts) describe. The layouts in this section and in
+[Both halves on two hostnames](#both-halves-on-two-hostnames) are for the other sign-in modes.
+
+In the other sign-in modes, MCP clients must reach their paths without an Access login.
+Worker-level Access would block every path that they use, so a private web app next to MCP needs a
+custom domain. On that hostname, use two self-hosted applications instead: the allow application,
+and a bypass application for the health check and the MCP paths. Access applies the most specific
+match first, so the bypass application wins on its paths and the allow application covers
+everything else. `bypass-app.json`:
 
 <!-- @starter:end -->
 
@@ -366,8 +384,9 @@ destinations and the policy action set to **Allow** or **Bypass**.
 
 ### Access on Previews
 
-Previews don't match a production hostname application. With the Access vars set in
-`previews.vars`, private pages on a Preview answer 403 and public pages keep working. To use
+Previews don't match a production hostname application. With `WEB_ACCESS` set to `private` and the
+Access vars set in `previews.vars`, private pages on a Preview answer 403 and public pages keep
+working. To use
 private pages on Previews, protect the Worker's Previews from **Workers & Pages** > your Worker >
 **Access** > **Previews only**, and set `ACCESS_AUD` in `previews.vars` to that application's AUD.
 

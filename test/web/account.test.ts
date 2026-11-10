@@ -3,11 +3,18 @@
 import { exports } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { type AccessIssuer, AUD, createAccessIssuer, useAccessVars } from "../helpers/access.ts";
+import {
+  type AccessIssuer,
+  AUD,
+  createAccessIssuer,
+  useAccessVars,
+  useWebAccess,
+} from "../helpers/access.ts";
 import { useNetwork } from "../helpers/network.ts";
 
 const network = useNetwork();
 const setAccessVars = useAccessVars();
+const setWebAccess = useWebAccess();
 let issuer: AccessIssuer;
 
 beforeAll(async () => {
@@ -18,8 +25,14 @@ beforeEach(() => {
   network.use(issuer.certs);
 });
 
+function usePrivateSite() {
+  setWebAccess("private");
+  setAccessVars(issuer.teamDomain, AUD);
+}
+
 describe("GET /account", () => {
-  it("renders the public-site note when Access isn't configured", async () => {
+  it("renders the public-site note on a public site", async () => {
+    setWebAccess("public");
     setAccessVars("", "");
 
     const response = await exports.default.fetch("http://example.com/account");
@@ -29,7 +42,7 @@ describe("GET /account", () => {
   });
 
   it("renders the email of a signed-in person on a private site", async () => {
-    setAccessVars(issuer.teamDomain, AUD);
+    usePrivateSite();
     const token = await issuer.sign({ email: "ada@example.com" });
 
     const response = await exports.default.fetch("http://example.com/account", {
@@ -41,7 +54,7 @@ describe("GET /account", () => {
   });
 
   it("returns 403 with the gate's message on a private site without an identity", async () => {
-    setAccessVars(issuer.teamDomain, AUD);
+    usePrivateSite();
 
     const response = await exports.default.fetch("http://example.com/account");
 
@@ -52,7 +65,7 @@ describe("GET /account", () => {
   });
 
   it("returns 403 for the route's data request on a private site without an identity", async () => {
-    setAccessVars(issuer.teamDomain, AUD);
+    usePrivateSite();
 
     const response = await exports.default.fetch("http://example.com/account.data");
 
@@ -62,7 +75,7 @@ describe("GET /account", () => {
 
 describe("GET / on a private site", () => {
   it("renders without an identity, because the home page is public", async () => {
-    setAccessVars(issuer.teamDomain, AUD);
+    usePrivateSite();
 
     const response = await exports.default.fetch("http://example.com/");
 

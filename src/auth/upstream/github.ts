@@ -210,7 +210,7 @@ async function signIn(
   // carry fewer scopes than the grant. `||` also replaces an empty display name, which would
   // otherwise leave the name blank in tool results.
   const props: Omit<AuthProps, "scopes"> = {
-    id: user.id,
+    id: userId,
     login: user.login,
     name: user.name || user.login,
     accessToken,

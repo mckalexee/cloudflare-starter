@@ -3,9 +3,8 @@
 # - `verify` runs `pnpm verify`, the definition of done: format, lint, typecheck, tests, build,
 #   and a deploy dry run.
 # - `prune` runs `scripts/prune.ts` for each project variant, verifies the result, checks it
-#   again after `--finish`, and looks for mentions of the half that the variant dropped, or of
-#   OAuth after `bearer`, so a stale prune list fails here instead of in a new project. It runs
-#   only in the template repository.
+#   again after `--finish`, and looks for mentions of what the variant dropped, so a stale prune
+#   list fails here instead of in a new project. It runs only in the template repository.
 # - `workflows` lints the workflow files with actionlint.
 #
 # Needs no secrets or variables.
@@ -51,7 +50,7 @@ jobs:
         run: pnpm verify
 
   prune:
-    name: Prune to ${{ matrix.variants }}
+    name: Prune with ${{ matrix.prune }}
     # A project created from the template is already pruned, so this job would fail there.
     if: github.repository == 'mckalexee/cloudflare-starter'
     runs-on: ubuntu-latest
@@ -60,9 +59,27 @@ jobs:
       # Report every variant, not only the first one that fails.
       fail-fast: false
       matrix:
-        # Each entry lists the variants to apply in order. An MCP-only project in bearer mode runs
-        # `mcp-only` and then `bearer`.
-        variants: [mcp-only, app-only, bearer, mcp-only bearer]
+        # `prune` holds the script's arguments. Several runs, applied in order, are separated by
+        # `;`, as an MCP-only project in bearer mode runs `mcp-only` and then `bearer`. `leftovers`
+        # names what the result must not mention: a part (`web` or `mcp`), the Access identity
+        # check (`access`), or the OAuth sign-in (`oauth`).
+        include:
+          - prune: mcp-only
+            leftovers: web access
+          - prune: app-only
+            leftovers: mcp
+          - prune: bearer
+            leftovers: oauth
+          - prune: mcp-only; bearer
+            leftovers: web access oauth
+          - prune: --parts mcp,web --sign-in github
+            leftovers: ""
+          - prune: --parts mcp --sign-in bearer
+            leftovers: web access oauth
+          - prune: --parts mcp --sign-in access
+            leftovers: web oauth
+          - prune: --parts mcp,web --sign-in access
+            leftovers: oauth
     steps:
       - uses: actions/checkout@v7
 
@@ -76,13 +93,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The script takes one variant per run.
       - name: Prune
         env:
-          VARIANTS: ${{ matrix.variants }}
+          PRUNE: ${{ matrix.prune }}
         run: |
-          for variant in $VARIANTS; do
-            node scripts/prune.ts "$variant"
+          IFS=';' read -ra runs <<< "$PRUNE"
+          for run in "${runs[@]}"; do
+            read -ra args <<< "$run"
+            node scripts/prune.ts "${args[@]}"
           done
 
       # Pruning removes dependencies from package.json, so the lockfile has to change.
@@ -100,31 +118,46 @@ jobs:
       - name: Check the finished project
         run: pnpm fmt:check && pnpm lint && pnpm typecheck
 
-      # A variant that drops a half must leave no mention of that half's paths or packages, and
-      # `bearer` must leave no mention of the OAuth sign-in. Bearer mode keeps the `OAUTH_KV`
-      # binding name, so the bearer pattern skips exactly `OAUTH_KV`. A match means a file needs a
-      # marker or a swap in `scripts/prune.ts`.
-      - name: Check for leftovers of the dropped half
+      # A variant must leave no mention of the paths and packages of what it dropped. Without
+      # OAuth, `OAUTH_KV` stays as a binding name, and Access sign-in's docs name Managed OAuth,
+      # the `oauth_configuration` field, and the `oauth-protected-resource` paths, so the `oauth`
+      # pattern skips exactly those. A match means a file needs a marker or a swap in
+      # `scripts/prune.ts`.
+      - name: Check for leftovers of what the variant dropped
         env:
-          VARIANTS: ${{ matrix.variants }}
+          LEFTOVERS: ${{ matrix.leftovers }}
         run: |
-          for variant in $VARIANTS; do
-            case "$variant" in
-              mcp-only) pattern='(^|[^.])react|src/web|#web/' ;;
-              app-only) pattern='mcp|modelcontextprotocol|oauth|src/auth|#auth/' ;;
-              bearer)
-                pattern='oauth([^_]|_([^k]|k[^v]|k?$)|$)|consent|/callback|GITHUB_CLIENT'
+          for leftover in $LEFTOVERS; do
+            case "$leftover" in
+              web) pattern='(^|[^.])react|src/web|#web/|WEB_ACCESS|web app\b' ;;
+              mcp) pattern='mcp|modelcontextprotocol|oauth|src/auth|#auth/' ;;
+              access)
+                pattern='src/http/access|#http/access|auth/access\.ts|helpers/access'
+                pattern+='|ACCESS_TEAM_DOMAIN|ACCESS_AUD|access\.dev|cf-access-jwt'
+                ;;
+              oauth)
+                pattern='(?<!managed )oauth(?!_kv|_configuration|-)|workers-oauth-provider'
+                pattern+='|consent|/callback|GITHUB_CLIENT'
                 pattern+='|ALLOWED_GITHUB|COOKIE_SECRET|MCP_RESOURCE'
                 pattern+='|auth/(provider|routes|authorize|upstream)'
                 pattern+='|github (account|login|sign)|sign in with github|signed-in (user|caller)'
                 pattern+='|authorization code'
                 ;;
-              *) continue ;;
+              *)
+                echo "::error::Unknown leftover kind $leftover."
+                exit 1
+                ;;
             esac
-            if grep -rniIE "$pattern" . \
+            # grep exits 1 when nothing matches, and 2 when it fails, such as on a bad pattern.
+            status=0
+            grep -rniIP "$pattern" . \
               --exclude-dir={.git,node_modules,build,dist,.wrangler,.react-router} \
-              --exclude={pnpm-lock.yaml,worker-configuration.d.ts}; then
-              echo "::error::The $variant variant leaves the matches above behind."
+              --exclude={pnpm-lock.yaml,worker-configuration.d.ts} || status=$?
+            if [ "$status" = 0 ]; then
+              echo "::error::The variant leaves the $leftover matches above behind."
+              exit 1
+            elif [ "$status" != 1 ]; then
+              echo "::error::grep failed on the $leftover pattern."
               exit 1
             fi
           done

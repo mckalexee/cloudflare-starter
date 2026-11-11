@@ -18,6 +18,7 @@
   },
   "accessApps": {
     "allow": {
+      "id": "44444444-4444-4444-4444-444444444444",
       "aud": "3333333333333333333333333333333333333333333333333333333333333333",
       "domain": "fixture.invalid",
       "destinations": ["fixture.invalid"],
@@ -31,7 +32,8 @@
   "deploy": {
     "url": "https://github.com/example/fixture/actions/runs/1",
     "status": "success",
-    "attempts": 1
+    "attempts": 1,
+    "runId": 1
   },
   "live": [{ "name": "healthz", "ok": true, "detail": "The fixture says /healthz answered." }]
 }

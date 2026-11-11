@@ -238,8 +238,11 @@ export function doStep(ctx: Context, id: string): void {
       const desired = desiredAccessApps(ctx);
       if (desired !== null) {
         facts.accessApps = {
-          allow: { ...desired.allow, aud: "aud-allow" },
-          bypass: desired.bypass === null ? null : { ...desired.bypass, aud: "aud-bypass" },
+          allow: { ...desired.allow, id: "app-allow", aud: "aud-allow" },
+          bypass:
+            desired.bypass === null
+              ? null
+              : { ...desired.bypass, id: "app-bypass", aud: "aud-bypass" },
         };
       }
       break;
@@ -295,6 +298,7 @@ export function doStep(ctx: Context, id: string): void {
         url: "https://github.com/octocat/acme-tools/actions/runs/1",
         status: "pending",
         attempts: 1,
+        runId: 1,
       };
       break;
     case "deploy-rerun":
@@ -302,6 +306,7 @@ export function doStep(ctx: Context, id: string): void {
         url: "https://github.com/octocat/acme-tools/actions/runs/1",
         status: "success",
         attempts: 2,
+        runId: 1,
       };
       break;
     case "live-checks":

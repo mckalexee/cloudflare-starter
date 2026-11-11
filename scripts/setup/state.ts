@@ -113,6 +113,9 @@ export function readLocal(root: string): LocalState {
   if (typeof raw.fixtureSkipped === "string") {
     state.fixtureSkipped = raw.fixtureSkipped;
   }
+  if (typeof raw.validated === "string") {
+    state.validated = raw.validated;
+  }
   return state;
 }
 
@@ -138,4 +141,20 @@ export function removeLocal(root: string): void {
 /** The answers from both files, merged. */
 export function mergedAnswers(root: string, local: LocalState): Answers {
   return { ...readShared(root), ...local.answers };
+}
+
+/** Parses `.dev.vars` into its keys and values. Missing file means no keys. */
+export function readDevVars(root: string): Map<string, string> {
+  const file = path.join(root, ".dev.vars");
+  const values = new Map<string, string>();
+  if (!existsSync(file)) {
+    return values;
+  }
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    const match = /^\s*([A-Z_][A-Z0-9_]*)\s*=(.*)$/.exec(line);
+    if (match?.[1] !== undefined) {
+      values.set(match[1], (match[2] ?? "").trim().replace(/^(["'])(.*)\1$/, "$2"));
+    }
+  }
+  return values;
 }

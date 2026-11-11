@@ -21,8 +21,9 @@ import {
   workerSecretNames,
   workersSubdomain,
 } from "./derive.ts";
-import { NotBuiltError, read, run, say, StepError } from "./exec.ts";
+import { read, run, say, StepError } from "./exec.ts";
 import { isSetupFile, manifestHash, renameLeftovers, treeFingerprint } from "./probes.ts";
+import { REMOTE_STEPS } from "./remote-steps.ts";
 import { LOCAL_FILE, updateLocal } from "./state.ts";
 import type { Context, StepId } from "./types.ts";
 
@@ -32,7 +33,7 @@ export type StepSpec = {
   /** One sentence that says what the step does, printed before it runs. */
   title: (ctx: Context) => string;
   remote: boolean;
-  run: (ctx: Context) => void | Promise<void>;
+  run: (ctx: Context) => void;
 };
 
 function edit(root: string, file: string, change: (text: string) => string): boolean {
@@ -46,15 +47,8 @@ function edit(root: string, file: string, change: (text: string) => string): boo
   return true;
 }
 
-function remote(id: StepId, title: (ctx: Context) => string): StepSpec {
-  return {
-    id,
-    title,
-    remote: true,
-    run: () => {
-      throw new NotBuiltError(`The ${id} step`);
-    },
-  };
+function remote(id: keyof typeof REMOTE_STEPS, title: (ctx: Context) => string): StepSpec {
+  return { id, title, remote: true, run: REMOTE_STEPS[id] };
 }
 
 /** The lines of the summary that the script prints before its first change. */

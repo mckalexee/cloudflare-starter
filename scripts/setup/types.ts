@@ -45,6 +45,7 @@ export type Zone = { id: string; name: string };
  * `domain:<domain>`, or `everyone`.
  */
 export type AccessAppFact = {
+  id: string;
   aud: string;
   domain: string;
   destinations: string[];
@@ -58,6 +59,10 @@ export type DeployFact = {
   status: "pending" | "success" | "failure";
   /** How many times the deploy job ran for `HEAD`, reruns included. */
   attempts: number;
+  /** The workflow run's ID, for a rerun or its log. */
+  runId: number;
+  /** The deploy job's conclusion, such as `skipped`, when it didn't succeed. */
+  conclusion?: string;
 };
 
 /** One live check against the deployed Worker. */
@@ -165,6 +170,8 @@ export type LocalState = {
   summaryShown?: boolean;
   /** Remote steps that fixture mode skipped, which count as done in fixture mode only. */
   fixtureSkipped?: string;
+  /** Hashes of secret values that GitHub or Cloudflare accepted, so they aren't checked again. */
+  validated?: string;
 };
 
 /** Everything the planner reads. */

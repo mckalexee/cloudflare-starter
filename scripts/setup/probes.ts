@@ -1,20 +1,20 @@
 // The probes that read the state of the run on every invocation. Local probes read the
-// repository and always run for real. Remote probes read GitHub and Cloudflare, and
-// `SETUP_FIXTURE=<file>` replaces all of them with the fixed facts in that file. `loadContext()`
-// runs both and hands the planner one `Context`.
+// repository and always run for real. Remote probes read GitHub, Cloudflare, and the deployed
+// Worker, each only when the planner first reads its fact, and `SETUP_FIXTURE=<file>` replaces
+// all of them with the fixed facts in that file. `loadContext()` hands the planner one `Context`.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
 import { AGENTS_BLOCK_START, configuredHost, pendingConfig } from "./config.ts";
 import { TEMPLATE_REPOSITORY } from "./derive.ts";
-import { NotBuiltError, read } from "./exec.ts";
-import { mergedAnswers, readLocal } from "./state.ts";
+import { read } from "./exec.ts";
+import { REAL_PROBES } from "./remote.ts";
+import { mergedAnswers, readDevVars, readLocal } from "./state.ts";
 import type {
   Answers,
   Context,
-  LocalState,
   Part,
   RemoteFacts,
   RepoFacts,
@@ -50,80 +50,30 @@ export const EMPTY_FACTS: RemoteFacts = {
   live: null,
 };
 
-/** What a remote probe can read: the answers, the cached state, and the facts found so far. */
-export type ProbeInput = {
-  root: string;
-  answers: Answers;
-  local: LocalState;
-  origin: { owner: string; name: string };
-  apiTokenFile: string;
-  /** The facts from the probes that ran earlier in `REMOTE_PROBES` order. */
-  facts: RemoteFacts;
-};
-
-/** A probe for one field of `RemoteFacts`. */
-export type RemoteProbe<K extends keyof RemoteFacts> = (
-  input: ProbeInput,
-) => RemoteFacts[K] | Promise<RemoteFacts[K]>;
-
-function notBuilt<K extends keyof RemoteFacts>(field: K): RemoteProbe<K> {
-  return () => {
-    throw new NotBuiltError(`The ${field} probe`);
-  };
-}
-
 /**
- * The remote probes, which run in this order on every run outside fixture mode. Each receives
- * the facts that the earlier probes found, so a probe can skip its call when a login or an
- * account is missing and return the empty value from `EMPTY_FACTS` instead.
- *
- * The remote half of setup replaces each `notBuilt` entry with a probe that calls `gh`,
- * `wrangler`, `cf`, or the deployed Worker. The probes never print a secret value.
+ * Facts that run their probe the first time something reads them, and keep the answer for the
+ * rest of the run. A probe can read other facts, which run their own probes in turn.
  */
-export const REMOTE_PROBES: { [K in keyof RemoteFacts]: RemoteProbe<K> } = {
-  github: notBuilt("github"),
-  wrangler: notBuilt("wrangler"),
-  cf: notBuilt("cf"),
-  repository: notBuilt("repository"),
-  workersSubdomain: notBuilt("workersSubdomain"),
-  zones: notBuilt("zones"),
-  accessOrganization: notBuilt("accessOrganization"),
-  kvNamespaces: notBuilt("kvNamespaces"),
-  accessApps: notBuilt("accessApps"),
-  githubOAuth: notBuilt("githubOAuth"),
-  apiToken: notBuilt("apiToken"),
-  workerSecrets: notBuilt("workerSecrets"),
-  previewSecrets: notBuilt("previewSecrets"),
-  githubSecrets: notBuilt("githubSecrets"),
-  githubVariables: notBuilt("githubVariables"),
-  pushed: notBuilt("pushed"),
-  deploy: notBuilt("deploy"),
-  live: notBuilt("live"),
-};
-
-// Runs the probes one after another, because each one reads the facts of the earlier ones.
-async function probeRemote(base: Omit<ProbeInput, "facts">): Promise<RemoteFacts> {
+function lazyFacts(ctx: () => Context): RemoteFacts {
   const facts: RemoteFacts = structuredClone(EMPTY_FACTS);
-  const input: ProbeInput = { ...base, facts };
-  const probes = REMOTE_PROBES;
-  facts.github = await probes.github(input);
-  facts.wrangler = await probes.wrangler(input);
-  facts.cf = await probes.cf(input);
-  facts.repository = await probes.repository(input);
-  facts.workersSubdomain = await probes.workersSubdomain(input);
-  facts.zones = await probes.zones(input);
-  facts.accessOrganization = await probes.accessOrganization(input);
-  facts.kvNamespaces = await probes.kvNamespaces(input);
-  facts.accessApps = await probes.accessApps(input);
-  facts.githubOAuth = await probes.githubOAuth(input);
-  facts.apiToken = await probes.apiToken(input);
-  facts.workerSecrets = await probes.workerSecrets(input);
-  facts.previewSecrets = await probes.previewSecrets(input);
-  facts.githubSecrets = await probes.githubSecrets(input);
-  facts.githubVariables = await probes.githubVariables(input);
-  facts.pushed = await probes.pushed(input);
-  facts.deploy = await probes.deploy(input);
-  facts.live = await probes.live(input);
+  for (const key of Object.keys(EMPTY_FACTS)) {
+    let value: unknown;
+    let done = false;
+    Object.defineProperty(facts, key, {
+      enumerable: true,
+      get: () => {
+        if (!done) {
+          value = (REAL_PROBES as Record<string, (context: Context) => unknown>)[key]?.(ctx());
+          done = true;
+        }
+        return value;
+      },
+      set: (next: unknown) => {
+        value = next;
+        done = true;
+      },
+    });
+  }
   return facts;
 }
 
@@ -153,7 +103,8 @@ const PROJECT_NAME = /^[a-z][a-z0-9-]{0,39}$/;
 export function readOrigin(root: string): { owner: string; name: string } {
   let url: string;
   try {
-    url = read(root, "git", ["remote", "get-url", "origin"]).trim();
+    // The configured URL, before any `url.<base>.insteadOf` rewriting.
+    url = read(root, "git", ["config", "--get", "remote.origin.url"]).trim();
   } catch {
     throw new RefusalError(
       "The repository has no origin remote. Create the project's GitHub repository from the template and clone it, as SETUP.md describes, then run the script in that clone.",
@@ -177,16 +128,28 @@ export function readOrigin(root: string): { owner: string; name: string } {
   return origin;
 }
 
+function isFile(file: string): boolean {
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function exists(root: string, file: string): boolean {
   return existsSync(path.join(root, file));
 }
 
 /** The files that Git tracks or would add, relative to the root. */
 export function listFiles(root: string): string[] {
-  return read(root, "git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
-    .split("\0")
-    .filter((file) => file !== "" && exists(root, file))
-    .toSorted();
+  return (
+    read(root, "git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+      .split("\0")
+      // Only regular files: a symbolic link to a folder, such as a linked `node_modules`, would
+      // otherwise show up as an untracked path.
+      .filter((file) => file !== "" && isFile(path.join(root, file)))
+      .toSorted()
+  );
 }
 
 /** Whether a path belongs to the setup script, which the rename leaves alone. */
@@ -256,22 +219,6 @@ export function treeFingerprint(root: string): string {
   return hash.digest("hex");
 }
 
-/** Parses `.dev.vars` into its keys and values. Missing file means no keys. */
-export function readDevVars(root: string): Map<string, string> {
-  const file = path.join(root, ".dev.vars");
-  const values = new Map<string, string>();
-  if (!existsSync(file)) {
-    return values;
-  }
-  for (const line of readFileSync(file, "utf8").split("\n")) {
-    const match = /^\s*([A-Z_][A-Z0-9_]*)\s*=(.*)$/.exec(line);
-    if (match?.[1] !== undefined) {
-      values.set(match[1], (match[2] ?? "").trim().replace(/^(["'])(.*)\1$/, "$2"));
-    }
-  }
-  return values;
-}
-
 function hashValues(values: (string | undefined)[]): string | null {
   return values.every((value) => value !== undefined && value !== "")
     ? sha256(JSON.stringify(values))
@@ -334,24 +281,46 @@ function readWranglerVersion(root: string): string {
   return "latest";
 }
 
+/** The marker of a Cloudflare API token that `cf` and Wrangler would use instead of the logins. */
+function apiTokenOverride(root: string): string | undefined {
+  if ((process.env.CLOUDFLARE_API_TOKEN ?? "") !== "") {
+    return "the environment";
+  }
+  const env = path.join(root, ".env");
+  return existsSync(env) && /^\s*CLOUDFLARE_API_TOKEN\s*=\s*\S/m.test(readFileSync(env, "utf8"))
+    ? "the project's .env file"
+    : undefined;
+}
+
+/** Where `loadContext()` reads from. */
+export type ContextOptions = {
+  /** The fixture file that replaces the remote probes. */
+  fixture?: string;
+  /** The folder that holds `setup.json` and `setup.local.json`, if it isn't the root. */
+  stateRoot?: string;
+};
+
 /**
- * Reads everything the planner needs. Outside fixture mode the remote probes run for real, so
- * this can take a few seconds and needs the network.
+ * Reads everything the planner needs. Outside fixture mode the remote probes run for real when
+ * the planner first reads their facts, so a run can take a few seconds and needs the network.
  */
-export async function loadContext(root: string, fixtureFile: string | undefined): Promise<Context> {
+export function loadContext(root: string, options: ContextOptions = {}): Context {
   const origin = readOrigin(root);
-  const local = readLocal(root);
-  const answers = mergedAnswers(root, local);
+  const override = apiTokenOverride(root);
+  if (override !== undefined) {
+    throw new RefusalError(
+      `CLOUDFLARE_API_TOKEN is set in ${override}. The Cloudflare CLI and Wrangler would use that token instead of the logins that setup checks. Remove it, then run the script again.`,
+    );
+  }
+  const stateRoot = options.stateRoot ?? root;
+  const local = readLocal(stateRoot);
+  const answers = mergedAnswers(stateRoot, local);
   const tokenFile = apiTokenPath(origin);
-  const facts =
-    fixtureFile === undefined
-      ? await probeRemote({ root, answers, local, origin, apiTokenFile: tokenFile })
-      : readFixture(fixtureFile);
   const devVars = readDevVars(root);
   const wrangler = exists(root, "wrangler.jsonc")
     ? readFileSync(path.join(root, "wrangler.jsonc"), "utf8")
     : "";
-  const repo: RepoFacts = {
+  const repo = {
     root,
     origin,
     wranglerVersion: readWranglerVersion(root),
@@ -363,14 +332,29 @@ export async function loadContext(root: string, fixtureFile: string | undefined)
     installed:
       exists(root, "node_modules/.modules.yaml") && local.installedFor === manifestHash(root),
     configuredHost: configuredHost(wrangler),
-    configPending: [],
     devVars: Object.fromEntries([...devVars].map(([key, value]) => [key, value !== ""])),
     secretSources: secretSources(answers, devVars, tokenFile),
     verified: local.verifiedFingerprint === treeFingerprint(root),
     clean: read(root, "git", ["status", "--porcelain"]).trim() === "",
     apiTokenFile: tokenFile,
+    configPending: [],
+  } satisfies RepoFacts;
+  const fixture = options.fixture;
+  const ctx: Context = {
+    answers,
+    local,
+    repo,
+    facts: fixture === undefined ? lazyFacts(() => ctx) : readFixture(fixture),
+    fixture: fixture !== undefined,
   };
-  const ctx: Context = { answers, local, repo, facts, fixture: fixtureFile !== undefined };
-  repo.configPending = pendingConfig(ctx);
+  // The config edits read facts, such as KV namespace IDs, so they wait until the planner asks.
+  let pending: string[] | undefined;
+  Object.defineProperty(repo, "configPending", {
+    enumerable: true,
+    get: () => (pending ??= pendingConfig(ctx)),
+    set: (next: string[]) => {
+      pending = next;
+    },
+  });
   return ctx;
 }

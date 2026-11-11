@@ -172,6 +172,7 @@ describe("answer", () => {
 
     const protectedHost = answered(SCENARIOS["mcp access"] ?? {});
     protectedHost.facts.accessApps.allow = {
+      id: "app",
       aud: "aud",
       domain: "acme-tools.acme.workers.dev",
       destinations: ["acme-tools.acme.workers.dev"],

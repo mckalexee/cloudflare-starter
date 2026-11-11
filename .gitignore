@@ -16,6 +16,9 @@ worker-configuration.d.ts
 .env*
 !.env.example
 
+# Setup state with email addresses and secret hashes, which setup deletes when it finishes
+setup.local.json
+
 # Test and compiler output
 coverage/
 *.tsbuildinfo

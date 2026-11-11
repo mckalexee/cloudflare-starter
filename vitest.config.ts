@@ -70,6 +70,8 @@ export default defineConfig({
   },
   // @starter:end
   test: {
+    // Tests live in `test/`, as docs/conventions.md says. Nothing else runs in workerd.
+    dir: "test",
     // The first request in a test file loads the Worker and its dependencies, which can take
     // longer than the default five seconds on a busy machine.
     testTimeout: 15_000,

@@ -57,6 +57,11 @@ or "sign-in mode".
    to know who the user is, or to serve a single client of your own, such as one script.
 5. **Where does it run?** On a domain that's on Cloudflare, or on the free `workers.dev` address.
 
+When the person has no preference on a technical choice, such as where data is kept, recommend
+what the project already has: KV storage, which setup creates when the project has an MCP
+endpoint. Don't name anything in the brief that setup doesn't create, such as a D1 database,
+unless the person asked for it.
+
 Turn the answers into the script's answers with this table:
 
 | From the interview                                                   | Script answers                                                                                        |
@@ -88,7 +93,8 @@ The script enforces these rules, so recommend a combination that keeps them:
 ### Playback
 
 Write the **brief**: two to four sentences, in your words, that say what the project does for
-its users and name the first tools or pages to build. It's 40 to 800 characters.
+its users and name the first tools or pages to build. It's 40 to 800 characters, and it names only
+technology that setup creates or that the person asked for.
 
 Before you create anything, tell the person in a few plain sentences what you'll set up and why
 each choice follows from what they said, and read them the brief. Then ask one question: is this

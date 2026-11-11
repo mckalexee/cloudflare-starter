@@ -364,7 +364,7 @@ export function liveChecks(ctx: Context): LiveCheck[] {
       liveCheck(
         "sign-in challenge",
         challenge.status === 401 && authenticate.includes(expected),
-        `POST /mcp without a token answered ${String(challenge.status)} with WWW-Authenticate: ${authenticate.slice(0, 160) || "none"}`,
+        `POST /mcp without a token answered ${String(challenge.status)} with WWW-Authenticate: ${excerpt(authenticate, expected) || "none"}`,
         `401 with ${expected} in WWW-Authenticate, the challenge of ${mode === "github" ? "GitHub OAuth" : mode === "access" ? "Cloudflare Access" : "bearer mode"}`,
       ),
     );
@@ -403,6 +403,20 @@ export function liveChecks(ctx: Context): LiveCheck[] {
     );
   }
   return checks;
+}
+
+// Shortens a long header without losing the part that a check looks for, so a passing check
+// shows what matched.
+export function excerpt(text: string, needle: string, width = 200): string {
+  if (text.length <= width) {
+    return text;
+  }
+  const at = text.indexOf(needle);
+  if (at === -1) {
+    return `${text.slice(0, width)}...`;
+  }
+  const start = Math.max(0, Math.min(at - 40, text.length - width));
+  return `${start > 0 ? "..." : ""}${text.slice(start, start + width)}${start + width < text.length ? "..." : ""}`;
 }
 
 // A live check whose detail says what the script saw, and then either that it matched or what it

@@ -22,7 +22,8 @@ export type QuestionKey =
   | "allowed-github"
   | "oauth-previews"
   | "license"
-  | "access-otp";
+  | "access-otp"
+  | "existing-resources";
 
 /** The keys of the two last person tasks, whose result is the person's answer. */
 export type TaskAnswerKey = "mcp-client" | "renovate";
@@ -77,9 +78,9 @@ export type RemoteFacts = {
   /** The account that `gh auth status` reports, or `null` when the GitHub CLI isn't signed in. */
   github: { login: string } | null;
   /** The accounts that `wrangler whoami` lists, or `null` when Wrangler isn't signed in. */
-  wrangler: { accounts: Account[] } | null;
+  wrangler: { accounts: Account[]; email?: string } | null;
   /** The accounts that `cf auth whoami` lists, or `null` when the Cloudflare CLI isn't signed in. */
-  cf: { accountIds: string[] } | null;
+  cf: { accountIds: string[]; email?: string } | null;
   /** The GitHub repository named by the `origin` remote, or `null` when it can't be read. */
   repository: { description: string } | null;
   /** The account's `workers.dev` subdomain, or `null` when the account has none. */
@@ -115,6 +116,22 @@ export type RemoteFacts = {
   deploy: DeployFact | null;
   /** The live checks against the deployed Worker, or `null` before they ran. */
   live: LiveCheck[] | null;
+  /** The Worker named after the project, by its script tag, or `null` when there's none. */
+  worker: { tag: string } | null;
+  /** Whether this repository's deploy job ever succeeded, which makes the Worker its own. */
+  repoDeployed: boolean;
+};
+
+/**
+ * The IDs of the resources that setup created or adopted, from `setup.json`. A resource with the
+ * project's name but another ID belongs to something else until the person says otherwise.
+ */
+export type Resources = {
+  kvProduction?: string;
+  kvPreview?: string;
+  accessAllow?: string;
+  accessBypass?: string;
+  worker?: string;
 };
 
 /** What the parts of the template that remain in the working tree say about earlier steps. */
@@ -154,6 +171,8 @@ export type RepoFacts = {
   clean: boolean;
   /** The file outside the repository where the person saves the Cloudflare API token. */
   apiTokenFile: string;
+  /** The Git author email, as a suggestion for who may sign in. */
+  gitEmail: string | null;
 };
 
 /** What the script keeps in `setup.local.json`, which Git ignores. */
@@ -176,6 +195,7 @@ export type LocalState = {
 
 /** Everything the planner reads. */
 export type Context = {
+  resources: Resources;
   /** The answers from `setup.json` and `setup.local.json`, merged. */
   answers: Answers;
   local: LocalState;
@@ -194,7 +214,8 @@ export type TaskId =
   | "github-oauth-app-previews"
   | "cloudflare-api-token"
   | "mcp-client"
-  | "renovate";
+  | "renovate"
+  | "new-name";
 
 /** The work steps, local and remote, in the order the planner runs them. */
 export type StepId =
@@ -224,7 +245,13 @@ export type StepId =
 /** The one thing that a run of the script does or asks for. */
 export type Action =
   | { kind: "question"; key: QuestionKey; problem: string | undefined }
-  | { kind: "task"; id: TaskId; remaining: number }
+  | {
+      kind: "task";
+      id: TaskId;
+      remaining: number;
+      /** Whether one more task may follow, because the Zero Trust organization isn't known yet. */
+      maybeMore: boolean;
+    }
   | { kind: "step"; id: StepId; remote: boolean }
   | { kind: "wait"; id: "deploy"; url: string | undefined }
   | { kind: "done"; skipped: StepId[] };

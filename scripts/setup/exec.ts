@@ -1,16 +1,18 @@
 // Runs commands and HTTP requests for the probes and the steps. Every outside effect goes through
 // `tools()`, so the tests can swap in fakes. A step prints each command before it runs, with names
 // only: a secret value never appears in the printed line or in the arguments, because it travels
-// on standard input or in a temporary file outside the repository. A command that fails stops the
-// step with its exit code, and its output is already on the screen.
+// on standard input. A command that fails stops the step with its exit code, and its output is
+// already on the screen.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 
 /** Thrown when a step can't finish. The message says what failed and what to do next. */
 export class StepError extends Error {
   override readonly name = "StepError";
+}
+
+/** Thrown when a probe can't read a fact reliably, so the run stops instead of guessing. */
+export class ProbeError extends Error {
+  override readonly name = "ProbeError";
 }
 
 /** The result of a command. */
@@ -198,20 +200,4 @@ export function read(cwd: string, command: string, args: string[]): string {
     );
   }
   return result.stdout;
-}
-
-/**
- * Writes `contents` to a file in a new temporary directory outside the repository, readable only
- * by its owner, calls `use` with its path, and deletes the directory afterward, even on failure.
- * Use it for commands that read secrets from a file, such as `wrangler secret bulk`.
- */
-export function withSecretFile<T>(name: string, contents: string, use: (file: string) => T): T {
-  const dir = mkdtempSync(path.join(tmpdir(), "setup-secrets-"));
-  const file = path.join(dir, name);
-  try {
-    writeFileSync(file, contents, { mode: 0o600 });
-    return use(file);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 }

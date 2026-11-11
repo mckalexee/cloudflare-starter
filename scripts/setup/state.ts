@@ -1,12 +1,12 @@
-// Reads and writes the two state files. `setup.json` holds the answers and is committed, so a new
-// clone resumes with them. `setup.local.json`, which Git ignores, holds what mustn't be committed:
+// Reads and writes the two state files. `setup.json` holds the answers and the IDs of the
+// resources that setup created, and is committed, so a new clone resumes with them. `setup.local.json`, which Git ignores, holds what mustn't be committed:
 // who may sign in, the two last tasks' answers, hashes of uploaded secrets, and caches that the
 // script would otherwise recompute. Everything else is read back from the repository and the
 // accounts on every run.
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { AnswerKey, Answers, LocalState } from "./types.ts";
+import type { AnswerKey, Answers, LocalState, Resources } from "./types.ts";
 
 /** The committed state file, at the repository root. */
 export const SHARED_FILE = "setup.json";
@@ -28,6 +28,7 @@ const ANSWER_ORDER: AnswerKey[] = [
   "oauth-previews",
   "license",
   "access-otp",
+  "existing-resources",
   "mcp-client",
   "renovate",
 ];
@@ -83,9 +84,50 @@ export function readShared(root: string): Answers {
   return readAnswers(readJson(path.join(root, SHARED_FILE)).answers);
 }
 
-/** Writes the answers to `setup.json`. */
+const RESOURCE_KEYS: (keyof Resources)[] = [
+  "kvProduction",
+  "kvPreview",
+  "accessAllow",
+  "accessBypass",
+  "worker",
+];
+
+/** The resource IDs in `setup.json`. */
+export function readResources(root: string): Resources {
+  const raw = readJson(path.join(root, SHARED_FILE)).resources;
+  const resources: Resources = {};
+  if (isRecord(raw)) {
+    for (const key of RESOURCE_KEYS) {
+      const id = raw[key];
+      if (typeof id === "string") {
+        resources[key] = id;
+      }
+    }
+  }
+  return resources;
+}
+
+function writeSharedFile(root: string, answers: Answers, resources: Resources): void {
+  const sorted: Resources = {};
+  for (const key of RESOURCE_KEYS) {
+    if (resources[key] !== undefined) {
+      sorted[key] = resources[key];
+    }
+  }
+  writeJson(path.join(root, SHARED_FILE), {
+    answers: sortedAnswers(answers),
+    ...(Object.keys(sorted).length === 0 ? {} : { resources: sorted }),
+  });
+}
+
+/** Writes the answers to `setup.json`, keeping its resource IDs. */
 export function writeShared(root: string, answers: Answers): void {
-  writeJson(path.join(root, SHARED_FILE), { answers: sortedAnswers(answers) });
+  writeSharedFile(root, answers, readResources(root));
+}
+
+/** Records the IDs of resources that setup created or the person adopted, in `setup.json`. */
+export function recordResources(root: string, ids: Resources): void {
+  writeSharedFile(root, readShared(root), { ...readResources(root), ...ids });
 }
 
 /** The state in `setup.local.json`. */

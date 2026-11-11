@@ -249,3 +249,30 @@ export function titleCase(name: string): string {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+/** A resource with the project's name whose ID `setup.json` doesn't record. */
+export type Conflict = { key: "kvProduction" | "kvPreview" | "worker"; id: string; label: string };
+
+/**
+ * The KV namespaces and the Worker that carry the project's name but that setup didn't create or
+ * adopt. Each needs the person's word before setup uses it. A Worker that this repository's deploy
+ * job already deployed counts as the project's own.
+ */
+export function conflicts(ctx: Context): Conflict[] {
+  const { name } = ctx.repo.origin;
+  const found: Conflict[] = [];
+  const { production, preview } = hasMcp(ctx.answers)
+    ? ctx.facts.kvNamespaces
+    : { production: null, preview: null };
+  if (production !== null && ctx.resources.kvProduction !== production) {
+    found.push({ key: "kvProduction", id: production, label: `the KV namespace ${name}-kv` });
+  }
+  if (preview !== null && ctx.resources.kvPreview !== preview) {
+    found.push({ key: "kvPreview", id: preview, label: `the KV namespace ${name}-kv-preview` });
+  }
+  const worker = ctx.facts.worker;
+  if (worker !== null && ctx.resources.worker !== worker.tag && !ctx.facts.repoDeployed) {
+    found.push({ key: "worker", id: worker.tag, label: `the Worker ${name}` });
+  }
+  return found;
+}

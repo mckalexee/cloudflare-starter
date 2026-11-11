@@ -3,7 +3,7 @@
 // and that "done" rests on the deploy job and the live checks.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -18,7 +18,7 @@ import {
   readDeploy,
   REAL_PROBES,
 } from "../remote.ts";
-import { readLocal } from "../state.ts";
+import { readLocal, readResources } from "../state.ts";
 import { contextWithFiles, fake, isTool } from "./fakes.ts";
 
 // `describe()` and `test()` from `node:test` return promises that the test runner awaits.
@@ -68,7 +68,7 @@ describe("remote steps", () => {
     assert.equal(readLocal(ctx.repo.root).secretHashes.apiToken, "hash:token");
   });
 
-  test("worker-secrets uploads a temporary file that it deletes, with a new cookie secret", () => {
+  test("worker-secrets sends the JSON on standard input, with a new cookie secret", () => {
     const ctx = contextWithFiles(
       { parts: "mcp", "sign-in": "github" },
       {
@@ -77,16 +77,26 @@ describe("remote steps", () => {
         COOKIE_SECRET: "local-cookie",
       },
     );
-    const recorder = fake();
+    const recorder = fake(
+      [
+        (call) =>
+          call.args.includes("token") ? { stdout: '{"token":"wrangler-token"}' } : undefined,
+      ],
+      [
+        () => ({
+          body: '{"success":true,"result":{"default_environment":{"script_tag":"tag-1"}}}',
+        }),
+      ],
+    );
     try {
       REMOTE_STEPS["worker-secrets"](ctx);
     } finally {
       recorder.restore();
     }
-    const [bulk] = recorder.calls;
-    assert.ok(bulk !== undefined && isTool(bulk, "wrangler", "secret", "bulk"));
-    const file = bulk.args[2] ?? "";
-    const uploaded: unknown = JSON.parse(bulk.files[file] ?? "{}");
+    const bulk = recorder.calls.find((call) => isTool(call, "wrangler", "secret", "bulk"));
+    assert.ok(bulk !== undefined);
+    assert.deepEqual(bulk.args, ["secret", "bulk", "--name", "acme-tools"]);
+    const uploaded: unknown = JSON.parse(bulk.stdin ?? "{}");
     assert.ok(typeof uploaded === "object" && uploaded !== null);
     assert.deepEqual(Object.keys(uploaded).toSorted(), [
       "COOKIE_SECRET",
@@ -94,16 +104,16 @@ describe("remote steps", () => {
       "GITHUB_CLIENT_SECRET",
     ]);
     assert.ok(
-      !JSON.stringify(uploaded).includes("local-cookie"),
+      !(bulk.stdin ?? "").includes("local-cookie"),
       "production reused the local cookie secret",
     );
-    assert.ok(!existsSync(file), "the temporary file survived");
-    assert.ok(!file.startsWith(ctx.repo.root), "the temporary file was inside the repository");
     assert.equal(bulk.env.CLOUDFLARE_ACCOUNT_ID, "0123456789abcdef0123456789abcdef");
     assertNotPrinted(recorder.printed, SECRET);
+    // The first upload creates the Worker, so setup records it as its own.
+    assert.equal(readResources(ctx.repo.root).worker, "tag-1");
   });
 
-  test("preview-secrets uploads the Preview app's values under the Worker's names", () => {
+  test("preview-secrets puts each Preview value on standard input under the Worker's names", () => {
     const ctx = contextWithFiles(
       { parts: "mcp", "sign-in": "github", "oauth-previews": "yes" },
       { PREVIEW_GITHUB_CLIENT_ID: "preview-id", PREVIEW_GITHUB_CLIENT_SECRET: SECRET },
@@ -114,29 +124,44 @@ describe("remote steps", () => {
     } finally {
       recorder.restore();
     }
-    const [bulk] = recorder.calls;
-    assert.ok(
-      bulk !== undefined && isTool(bulk, "wrangler", "preview", "base-config", "secret", "bulk"),
+    assert.deepEqual(
+      recorder.calls.map((call) => [
+        call.args[4],
+        call.stdin === SECRET ? "<secret>" : call.stdin?.length,
+      ]),
+      [
+        ["GITHUB_CLIENT_ID", "preview-id".length],
+        ["GITHUB_CLIENT_SECRET", "<secret>"],
+        ["COOKIE_SECRET", 64],
+      ],
     );
-    const uploaded = bulk.files[bulk.args[4] ?? ""] ?? "";
-    assert.match(uploaded, /"GITHUB_CLIENT_ID":"preview-id"/);
-    assert.match(uploaded, /"COOKIE_SECRET"/);
+    for (const call of recorder.calls) {
+      assert.ok(isTool(call, "wrangler", "preview", "base-config", "secret", "put"));
+      assert.ok(!call.args.join(" ").includes(SECRET), "a secret appeared in the arguments");
+    }
     assertNotPrinted(recorder.printed, SECRET);
   });
 
-  test("kv-namespaces creates only the missing namespaces", () => {
+  test("kv-namespaces creates only the missing namespaces and records their IDs", () => {
     const ctx = contextWithFiles({ parts: "mcp", "sign-in": "bearer" });
     ctx.facts.kvNamespaces = { production: "existing", preview: null };
-    const recorder = fake();
+    const recorder = fake([
+      (call) =>
+        call.args.join(" ") === "kv namespace list"
+          ? {
+              stdout:
+                '[{"id":"existing","title":"acme-tools-kv"},{"id":"new-id","title":"acme-tools-kv-preview"}]',
+            }
+          : undefined,
+    ]);
     try {
       REMOTE_STEPS["kv-namespaces"](ctx);
     } finally {
       recorder.restore();
     }
-    assert.equal(recorder.calls.length, 1);
     assert.ok(
       isTool(
-        only(recorder.calls),
+        only(recorder.calls.filter((call) => call.args[2] === "create")),
         "wrangler",
         "kv",
         "namespace",
@@ -144,6 +169,7 @@ describe("remote steps", () => {
         "acme-tools-kv-preview",
       ),
     );
+    assert.deepEqual(readResources(ctx.repo.root), { kvPreview: "new-id" });
   });
 
   test("access-apps creates the bypass application first, then the allow application", () => {
@@ -154,7 +180,13 @@ describe("remote steps", () => {
       hostname: "workers.dev",
       "who-may-sign-in": "ada@example.com,example.com",
     });
-    const recorder = fake();
+    let created = 0;
+    const recorder = fake([
+      (call) =>
+        call.args[3] === "create"
+          ? { stdout: `{"id":"app-${String(++created)}","aud":"aud"}` }
+          : undefined,
+    ]);
     try {
       REMOTE_STEPS["access-apps"](ctx);
     } finally {
@@ -183,23 +215,26 @@ describe("remote steps", () => {
         ],
       },
     ]);
+    assert.deepEqual(readResources(ctx.repo.root), { accessAllow: "app-2", accessBypass: "app-1" });
     // The policy holds email addresses, so the printed command shows a placeholder.
     assertNotPrinted(recorder.printed, "ada@example.com");
   });
 
-  test("access-apps updates applications that exist", () => {
+  test("access-apps updates its own applications and refuses someone else's", () => {
     const ctx = contextWithFiles({
       parts: "web",
       "web-access": "private",
       hostname: "workers.dev",
       "who-may-sign-in": "grace@example.com",
     });
-    const app = { aud: "aud", domain: "", destinations: [], include: [], managedOAuth: false };
+    const app = { aud: "aud", destinations: [], include: [], managedOAuth: false };
     ctx.facts.accessApps = {
-      allow: { ...app, id: "allow-id" },
-      bypass: { ...app, id: "bypass-id" },
+      // The bypass application is ours by its recorded ID, the allow application by its domain.
+      allow: { ...app, id: "allow-id", domain: "acme-tools.acme.workers.dev" },
+      bypass: { ...app, id: "bypass-id", domain: "elsewhere.example.com" },
     };
-    const recorder = fake();
+    ctx.resources.accessBypass = "bypass-id";
+    let recorder = fake();
     try {
       REMOTE_STEPS["access-apps"](ctx);
     } finally {
@@ -212,6 +247,17 @@ describe("remote steps", () => {
         ["update", "allow-id"],
       ],
     );
+    // An application with the wanted name on another domain, whose ID setup never recorded.
+    ctx.resources = {};
+    ctx.facts.accessApps.allow = { ...app, id: "other-id", domain: "other.example.com" };
+    ctx.facts.accessApps.bypass = null;
+    recorder = fake();
+    try {
+      assert.throws(() => REMOTE_STEPS["access-apps"](ctx), /belongs to something else/);
+    } finally {
+      recorder.restore();
+    }
+    assert.ok(!recorder.calls.some((call) => call.args.includes("other-id")));
   });
 
   test("access-otp adds the one-time PIN login method", () => {

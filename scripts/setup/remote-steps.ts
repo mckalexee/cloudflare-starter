@@ -1,7 +1,8 @@
 // The steps that change GitHub and Cloudflare. Each one prints its command before it runs, reads
-// secret values from `.dev.vars` or the token file, and sends them only on standard input or in a
-// temporary file outside the repository. Each is idempotent: it creates what's missing, updates
-// what differs, and records the hash of every secret it uploads, so a changed value uploads again.
+// secret values from `.dev.vars` or the token file, and sends them only on standard input, so no
+// secret ever lands in a file or an argument. Each is idempotent: it creates what's missing,
+// updates what differs, records the ID of every resource it creates in `setup.json`, and records
+// the hash of every secret it uploads, so a changed value uploads again.
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 
@@ -14,18 +15,20 @@ import {
   workersSubdomain,
   type DesiredAccessApp,
 } from "./derive.ts";
-import { run, say, StepError, withSecretFile } from "./exec.ts";
+import { run, say, StepError } from "./exec.ts";
 import {
   accountEnv,
   cfCommand,
   cloudflareApi,
   DEPLOY_JOB,
+  parseJson,
   readApiToken,
+  REAL_PROBES,
   repoSlug,
   wranglerCommand,
 } from "./remote.ts";
-import { readDevVars, updateLocal } from "./state.ts";
-import type { AccessAppFact, Context, SecretTarget } from "./types.ts";
+import { readDevVars, recordResources, updateLocal } from "./state.ts";
+import type { AccessAppFact, Context, Resources, SecretTarget } from "./types.ts";
 
 function requireAccount(ctx: Context): string {
   const id = accountId(ctx);
@@ -38,13 +41,21 @@ function requireAccount(ctx: Context): string {
 function wrangler(
   ctx: Context,
   args: string[],
-  options: { cwd?: string; display?: string } = {},
+  options: { cwd?: string; display?: string; stdin?: string } = {},
 ): void {
   const [command, ...prefix] = wranglerCommand(ctx);
   run(options.cwd ?? ctx.repo.root, command, [...prefix, ...args], {
     env: accountEnv(ctx),
+    stdin: options.stdin,
     display: `wrangler ${options.display ?? args.join(" ")}`,
   });
+}
+
+function record(ctx: Context, ids: Resources): void {
+  recordResources(ctx.repo.root, ids);
+  say(
+    `Recorded ${Object.keys(ids).join(" and ")} in setup.json, so later runs know that setup created ${Object.keys(ids).length === 1 ? "it" : "them"}.`,
+  );
 }
 
 function cf(ctx: Context, args: string[], display: string): string {
@@ -123,21 +134,56 @@ export function accessAppPayload(app: DesiredAccessApp): Record<string, unknown>
   };
 }
 
-function applyAccessApp(ctx: Context, app: DesiredAccessApp, existing: AccessAppFact | null): void {
+// An application with the wanted name is this project's only when setup recorded its ID or it
+// covers the wanted domain. Anything else belongs to someone else and stays untouched.
+function ensureOwned(
+  ctx: Context,
+  app: DesiredAccessApp,
+  existing: AccessAppFact | null,
+  key: "accessAllow" | "accessBypass",
+): void {
+  if (existing !== null && ctx.resources[key] !== existing.id && existing.domain !== app.domain) {
+    throw new StepError(
+      `An Access application named ${app.name} already exists and covers ${existing.domain}, not ${app.domain}, so it belongs to something else. Rename or delete that application in the Zero Trust dashboard, or start again with another project name.`,
+    );
+  }
+}
+
+function applyAccessApp(
+  ctx: Context,
+  app: DesiredAccessApp,
+  existing: AccessAppFact | null,
+  key: "accessAllow" | "accessBypass",
+): void {
   const body = JSON.stringify(accessAppPayload(app));
   const what = `<payload for ${app.name} on ${app.domain}>`;
   if (existing === null) {
-    cf(
+    const output = cf(
       ctx,
       ["zero-trust", "access", "applications", "create", "--body", body],
       `zero-trust access applications create --body ${what}`,
     );
+    const created = parseJson(output);
+    const id =
+      typeof created === "object" &&
+      created !== null &&
+      "id" in created &&
+      typeof created.id === "string"
+        ? created.id
+        : undefined;
+    if (id === undefined) {
+      throw new StepError(`The Cloudflare CLI created ${app.name} but printed no ID.`);
+    }
+    record(ctx, { [key]: id });
   } else {
     cf(
       ctx,
       ["zero-trust", "access", "applications", "update", existing.id, "--body", body],
       `zero-trust access applications update ${existing.id} --body ${what}`,
     );
+    if (ctx.resources[key] !== existing.id) {
+      record(ctx, { [key]: existing.id });
+    }
   }
 }
 
@@ -172,6 +218,15 @@ export const REMOTE_STEPS = {
     if (preview === null) {
       wrangler(ctx, ["kv", "namespace", "create", `${name}-kv-preview`], { cwd: tmpdir() });
     }
+    const created = REAL_PROBES.kvNamespaces(ctx);
+    const ids: Resources = {};
+    if (production === null && created.production !== null) {
+      ids.kvProduction = created.production;
+    }
+    if (preview === null && created.preview !== null) {
+      ids.kvPreview = created.preview;
+    }
+    record(ctx, ids);
   },
   "access-otp": (ctx: Context) => {
     const body = JSON.stringify({ name: "One-time PIN", type: "onetimepin", config: {} });
@@ -188,11 +243,16 @@ export const REMOTE_STEPS = {
         "The hostname isn't settled, so the Access applications can't be created.",
       );
     }
+    // Check both before changing either, so a conflict changes nothing.
+    if (desired.bypass !== null) {
+      ensureOwned(ctx, desired.bypass, ctx.facts.accessApps.bypass, "accessBypass");
+    }
+    ensureOwned(ctx, desired.allow, ctx.facts.accessApps.allow, "accessAllow");
     // The bypass application comes first, so its paths are never blocked.
     if (desired.bypass !== null) {
-      applyAccessApp(ctx, desired.bypass, ctx.facts.accessApps.bypass);
+      applyAccessApp(ctx, desired.bypass, ctx.facts.accessApps.bypass, "accessBypass");
     }
-    applyAccessApp(ctx, desired.allow, ctx.facts.accessApps.allow);
+    applyAccessApp(ctx, desired.allow, ctx.facts.accessApps.allow, "accessAllow");
   },
   "worker-secrets": (ctx: Context) => {
     const names = workerSecretNames(ctx.answers);
@@ -204,12 +264,17 @@ export const REMOTE_STEPS = {
           // Production gets its own cookie secret, never the local one.
           COOKIE_SECRET: cookieSecret(),
         };
-    withSecretFile("secrets.json", JSON.stringify(values), (file) => {
-      wrangler(ctx, ["secret", "bulk", file, "--name", ctx.repo.origin.name], {
-        display: `secret bulk <temporary file with ${names.join(", ")}> --name ${ctx.repo.origin.name}`,
-      });
+    // Without a file argument, `wrangler secret bulk` reads the JSON from standard input.
+    wrangler(ctx, ["secret", "bulk", "--name", ctx.repo.origin.name], {
+      stdin: JSON.stringify(values),
+      display: `secret bulk --name ${ctx.repo.origin.name} < <JSON with ${names.join(", ")}>`,
     });
     recordHash(ctx, "production");
+    // The first upload creates the Worker, so this is when setup knows the Worker is its own.
+    const worker = REAL_PROBES.worker(ctx);
+    if (worker !== null && ctx.resources.worker !== worker.tag) {
+      record(ctx, { worker: worker.tag });
+    }
   },
   "preview-secrets": (ctx: Context) => {
     const names = previewSecretNames(ctx.answers);
@@ -220,15 +285,18 @@ export const REMOTE_STEPS = {
           GITHUB_CLIENT_SECRET: devVar(ctx, "PREVIEW_GITHUB_CLIENT_SECRET"),
           COOKIE_SECRET: cookieSecret(),
         };
-    withSecretFile("secrets.json", JSON.stringify(values), (file) => {
+    // `preview base-config secret bulk` needs a file, so each secret goes through `put`, which
+    // reads its value from standard input.
+    for (const [key, value] of Object.entries(values)) {
       wrangler(
         ctx,
-        ["preview", "base-config", "secret", "bulk", file, "--worker-name", ctx.repo.origin.name],
+        ["preview", "base-config", "secret", "put", key, "--worker-name", ctx.repo.origin.name],
         {
-          display: `preview base-config secret bulk <temporary file with ${names.join(", ")}> --worker-name ${ctx.repo.origin.name}`,
+          stdin: value,
+          display: `preview base-config secret put ${key} --worker-name ${ctx.repo.origin.name} < <value>`,
         },
       );
-    });
+    }
     recordHash(ctx, "preview");
   },
   "github-secrets": (ctx: Context) => {

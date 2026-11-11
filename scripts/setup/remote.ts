@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { accessUsed, accountId, hasWeb, host, signIn, webPrivate } from "./derive.ts";
-import { tools, type ExecResult } from "./exec.ts";
+import { ProbeError, tools, type ExecResult } from "./exec.ts";
 import { readDevVars, updateLocal } from "./state.ts";
 import type { AccessAppFact, Context, DeployFact, LiveCheck, RemoteFacts } from "./types.ts";
 
@@ -400,12 +400,14 @@ export const REAL_PROBES: { [K in keyof RemoteFacts]: (ctx: Context) => RemoteFa
     if (!isRecord(parsed) || parsed.loggedIn !== true || !Array.isArray(parsed.accounts)) {
       return null;
     }
+    const email = str(parsed.email);
     return {
       accounts: parsed.accounts.flatMap((account) =>
         isRecord(account) && typeof account.id === "string"
           ? [{ id: account.id, name: str(account.name) ?? account.id }]
           : [],
       ),
+      ...(email === undefined ? {} : { email }),
     };
   },
   cf: (ctx) => {
@@ -415,10 +417,12 @@ export const REAL_PROBES: { [K in keyof RemoteFacts]: (ctx: Context) => RemoteFa
       return null;
     }
     const accounts = Array.isArray(parsed.accounts) ? parsed.accounts : [];
+    const email = str(parsed.email);
     return {
       accountIds: accounts.flatMap((account) =>
         isRecord(account) && typeof account.id === "string" ? [account.id] : [],
       ),
+      ...(email === undefined ? {} : { email }),
     };
   },
   repository: (ctx) => {
@@ -495,15 +499,9 @@ export const REAL_PROBES: { [K in keyof RemoteFacts]: (ctx: Context) => RemoteFa
     if (!accessUsed(ctx.answers) || ctx.facts.cf === null || accountId(ctx) === undefined) {
       return empty;
     }
-    const parsed = parseJson(
-      cf(ctx, ["zero-trust", "access", "applications", "list"])?.stdout ?? "",
-    );
-    const apps = (Array.isArray(parsed) ? parsed : []).filter(isRecord);
     const wanted = accessAppNames(ctx.repo.origin.name);
-    const allow = apps.find((app) => app.name === wanted.allow);
-    const bypass = apps.find(
-      (app) => typeof app.name === "string" && wanted.bypass.includes(app.name),
-    );
+    const allow = appsNamed(ctx, wanted.allow)[0];
+    const bypass = wanted.bypass.flatMap((name) => appsNamed(ctx, name))[0];
     return {
       allow: allow === undefined ? null : accessAppFact(allow),
       bypass: bypass === undefined ? null : accessAppFact(bypass),
@@ -596,4 +594,76 @@ export const REAL_PROBES: { [K in keyof RemoteFacts]: (ctx: Context) => RemoteFa
     return !ctx.facts.pushed || head === undefined ? null : readDeploy(ctx, head);
   },
   live: (ctx) => (ctx.facts.deploy?.status === "success" ? liveChecks(ctx) : null),
+  worker: (ctx) => {
+    const id = accountId(ctx);
+    if (id === undefined || ctx.facts.wrangler === null) {
+      return null;
+    }
+    const response = cloudflareApi(
+      ctx,
+      "GET",
+      `/accounts/${id}/workers/services/${ctx.repo.origin.name}`,
+    );
+    if (response.status === 404) {
+      return null;
+    }
+    const environment = isRecord(response.result) ? response.result.default_environment : undefined;
+    const tag = isRecord(environment) ? str(environment.script_tag) : undefined;
+    if (!response.success || tag === undefined) {
+      throw new ProbeError(
+        `Cloudflare didn't say whether the Worker ${ctx.repo.origin.name} exists: ${response.errors}`,
+      );
+    }
+    return { tag };
+  },
+  repoDeployed: (ctx) => {
+    if (ctx.facts.github === null) {
+      return false;
+    }
+    const runs = parseJson(
+      gh(ctx, [
+        "api",
+        `repos/${repoSlug(ctx)}/actions/workflows/deploy.yml/runs?status=success&per_page=10`,
+      ]).stdout,
+    );
+    const ids =
+      isRecord(runs) && Array.isArray(runs.workflow_runs)
+        ? runs.workflow_runs.flatMap((run) =>
+            isRecord(run) && typeof run.id === "number" ? [run.id] : [],
+          )
+        : [];
+    return ids.some((runId) => {
+      const jobs = parseJson(
+        gh(ctx, ["api", `repos/${repoSlug(ctx)}/actions/runs/${String(runId)}/jobs`]).stdout,
+      );
+      return (
+        isRecord(jobs) &&
+        Array.isArray(jobs.jobs) &&
+        jobs.jobs.some(
+          (job) => isRecord(job) && job.name === DEPLOY_JOB && job.conclusion === "success",
+        )
+      );
+    });
+  },
 };
+
+// Lists the Access applications with exactly this name. A failed call stops the run, because a
+// missed application could be created twice or overwritten.
+function appsNamed(ctx: Context, name: string): Record<string, unknown>[] {
+  const result = cf(ctx, [
+    "zero-trust",
+    "access",
+    "applications",
+    "list",
+    "--name",
+    name,
+    "--exact",
+  ]);
+  const parsed = result === undefined || result.status !== 0 ? undefined : parseJson(result.stdout);
+  if (!Array.isArray(parsed)) {
+    throw new ProbeError(
+      `The Cloudflare CLI couldn't list the Access applications named ${name}: ${(result?.stderr ?? "it isn't installed").trim().slice(0, 300)}`,
+    );
+  }
+  return parsed.filter(isRecord).filter((app) => app.name === name);
+}

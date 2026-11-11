@@ -11,7 +11,7 @@ import { AGENTS_BLOCK_START, configuredHost, pendingConfig } from "./config.ts";
 import { TEMPLATE_REPOSITORY } from "./derive.ts";
 import { read } from "./exec.ts";
 import { REAL_PROBES } from "./remote.ts";
-import { mergedAnswers, readDevVars, readLocal } from "./state.ts";
+import { mergedAnswers, readDevVars, readLocal, readResources } from "./state.ts";
 import type {
   Answers,
   Context,
@@ -48,6 +48,8 @@ export const EMPTY_FACTS: RemoteFacts = {
   pushed: false,
   deploy: null,
   live: null,
+  worker: null,
+  repoDeployed: false,
 };
 
 /**
@@ -96,7 +98,9 @@ export function readFixture(file: string): RemoteFacts {
   return facts;
 }
 
-const ORIGIN = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
+// HTTPS, `git@github.com:`, and `ssh://git@github.com/` forms, and nothing else.
+const ORIGIN =
+  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
 const PROJECT_NAME = /^[a-z][a-z0-9-]{0,39}$/;
 
 /** The owner and name from the `origin` remote. Refuses the template and names Workers can't use. */
@@ -292,6 +296,18 @@ function apiTokenOverride(root: string): string | undefined {
     : undefined;
 }
 
+/** The `origin` owner that fixture mode requires, so a fixture never touches a real project. */
+export const FIXTURE_OWNER = "example";
+
+function gitEmail(root: string): string | null {
+  try {
+    const email = read(root, "git", ["config", "user.email"]).trim();
+    return email === "" ? null : email;
+  } catch {
+    return null;
+  }
+}
+
 /** Where `loadContext()` reads from. */
 export type ContextOptions = {
   /** The fixture file that replaces the remote probes. */
@@ -310,6 +326,11 @@ export function loadContext(root: string, options: ContextOptions = {}): Context
   if (override !== undefined) {
     throw new RefusalError(
       `CLOUDFLARE_API_TOKEN is set in ${override}. The Cloudflare CLI and Wrangler would use that token instead of the logins that setup checks. Remove it, then run the script again.`,
+    );
+  }
+  if (options.fixture !== undefined && origin.owner !== FIXTURE_OWNER) {
+    throw new RefusalError(
+      `Fixture mode fills a project with fake IDs and skips every check of GitHub and Cloudflare, so it runs only in a scratch copy whose origin owner is ${FIXTURE_OWNER}, such as https://github.com/${FIXTURE_OWNER}/${origin.name}.git. This origin's owner is ${origin.owner}.`,
     );
   }
   const stateRoot = options.stateRoot ?? root;
@@ -338,9 +359,11 @@ export function loadContext(root: string, options: ContextOptions = {}): Context
     clean: read(root, "git", ["status", "--porcelain"]).trim() === "",
     apiTokenFile: tokenFile,
     configPending: [],
+    gitEmail: gitEmail(root),
   } satisfies RepoFacts;
   const fixture = options.fixture;
   const ctx: Context = {
+    resources: readResources(stateRoot),
     answers,
     local,
     repo,

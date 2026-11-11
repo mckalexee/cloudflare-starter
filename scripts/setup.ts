@@ -26,7 +26,7 @@ import {
 } from "./setup/output.ts";
 import { plan } from "./setup/planner.ts";
 import { loadContext, RefusalError } from "./setup/probes.ts";
-import { checkAnswer } from "./setup/questions.ts";
+import { checkAnswer, precheckAnswer } from "./setup/questions.ts";
 import { readShared, updateLocal, writeShared } from "./setup/state.ts";
 import { STEPS } from "./setup/steps.ts";
 
@@ -91,17 +91,21 @@ async function next(): Promise<number> {
   return 0;
 }
 
+function refuseAnswer(key: string, reason: string): number {
+  print([`REFUSED: answer ${key}`, reason, "", `Next: run \`${RUN}\` to see what it asks for.`]);
+  return 1;
+}
+
 async function answer(key: string, value: string): Promise<number> {
+  // A wrong key or value needs no probes, so it gets its answer before the slow part.
+  const pre = precheckAnswer(key, value);
+  if (!pre.ok) {
+    return refuseAnswer(key, pre.reason);
+  }
   const ctx = await loadContext(ROOT, FIXTURE);
   const check = checkAnswer(key, value, ctx);
   if (!check.ok) {
-    print([
-      `REFUSED: answer ${key}`,
-      check.reason,
-      "",
-      `Next: run \`${RUN}\` to see what it asks for.`,
-    ]);
-    return 1;
+    return refuseAnswer(key, check.reason);
   }
   if (check.store === "shared") {
     writeShared(ROOT, { ...readShared(ROOT), [check.key]: check.value });

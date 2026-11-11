@@ -551,26 +551,22 @@ const SETTLED: Record<string, string> = {
 };
 
 /**
- * Checks an answer: the key must exist, the value must parse, the question must apply to the
- * answers so far, and a step must not have used the earlier answer already.
+ * The checks that need no context: the key must exist and the value must parse. `answer` runs
+ * these before it probes anything, so a typo gets its answer at once.
  */
-export function checkAnswer(key: string, raw: string, ctx: Context): AnswerCheck {
+export function precheckAnswer(
+  key: string,
+  raw: string,
+): { ok: true; spec: QuestionSpec | undefined; value: string } | { ok: false; reason: string } {
   const settled = SETTLED[key];
   if (settled !== undefined) {
     return { ok: false, reason: settled };
   }
   if (key === "mcp-client" || key === "renovate") {
     const values = TASK_ANSWERS[key];
-    if (!values.includes(raw)) {
-      return { ok: false, reason: `The ${key} answer is one of: ${values.join(", ")}.` };
-    }
-    if (key === "mcp-client" && !hasMcp(ctx.answers)) {
-      return {
-        ok: false,
-        reason: "The project has no MCP endpoint, so there's no client to connect.",
-      };
-    }
-    return { ok: true, key, value: raw, store: "local" };
+    return values.includes(raw)
+      ? { ok: true, spec: undefined, value: raw }
+      : { ok: false, reason: `The ${key} answer is one of: ${values.join(", ")}.` };
   }
   const spec = QUESTIONS.find((candidate) => candidate.key === key);
   if (spec === undefined) {
@@ -584,6 +580,34 @@ export function checkAnswer(key: string, raw: string, ctx: Context): AnswerCheck
   if ("error" in parsed) {
     return { ok: false, reason: `That isn't a valid ${key} answer. ${parsed.error}` };
   }
+  return { ok: true, spec, value: parsed.value };
+}
+
+/**
+ * Checks an answer: the key must exist, the value must parse, the question must apply to the
+ * answers so far, and a step must not have used the earlier answer already.
+ */
+export function checkAnswer(key: string, raw: string, ctx: Context): AnswerCheck {
+  const pre = precheckAnswer(key, raw);
+  if (!pre.ok) {
+    return pre;
+  }
+  const { spec } = pre;
+  if (spec === undefined) {
+    if (key === "mcp-client" && !hasMcp(ctx.answers)) {
+      return {
+        ok: false,
+        reason: "The project has no MCP endpoint, so there's no client to connect.",
+      };
+    }
+    return {
+      ok: true,
+      key: key === "mcp-client" ? "mcp-client" : "renovate",
+      value: raw,
+      store: "local",
+    };
+  }
+  const parsed = { value: pre.value };
   if (!spec.applies(ctx.answers)) {
     return {
       ok: false,

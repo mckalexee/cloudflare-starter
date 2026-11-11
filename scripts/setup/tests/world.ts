@@ -26,6 +26,8 @@ const ACCOUNT_B = "fedcba9876543210fedcba9876543210";
 
 /** The answers that every scenario shares. A scenario's own answers override them. */
 export const SHARED_ANSWERS: Scenario = {
+  brief:
+    "Tracks support requests for the Acme team. First, build a tool that lists open requests and a page that shows one request.",
   "display-name": "Acme Tools",
   description: "Tracks support requests for the Acme team.",
   "who-may-sign-in": "ada@example.com",

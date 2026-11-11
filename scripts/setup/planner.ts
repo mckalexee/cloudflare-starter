@@ -122,6 +122,7 @@ function includesAll(names: readonly string[] | null, wanted: readonly string[])
  * own steps follow, and the two last tasks end the run.
  */
 const ITEMS: Item[] = [
+  questionItem("brief"),
   questionItem("display-name"),
   questionItem("parts"),
   questionItem("sign-in"),

@@ -24,6 +24,17 @@ export function finishCopyDir(origin: { owner: string; name: string }): string {
   return path.join(homedir(), ".config", `setup-${origin.owner}-${origin.name}`, "finish");
 }
 
+// Setup is done, but the request isn't: the brief says what to build next.
+function buildNext(brief: string | undefined): string[] {
+  return [
+    "",
+    "Brief, now in the What to build section of AGENTS.md:",
+    brief ?? "(none recorded)",
+    "",
+    "Next: build the first things that the brief names, with the checklists in AGENTS.md and pnpm verify, on a branch with a pull request, so the Preview shows the result before it reaches production.",
+  ];
+}
+
 /** The lines that `finish` prints when a check is still open. */
 export function renderRefusal(blockers: string[]): string[] {
   return [
@@ -196,8 +207,7 @@ export function checkDeploy(root: string, copy: string): number {
     "DONE",
     `Setup is finished. The finish commit deployed in ${deploy.url}, and every live check passed.`,
     `The copy of the setup script and the API token file, ${ctx.repo.apiTokenFile}, are deleted. GitHub keeps the token as the CLOUDFLARE_API_TOKEN secret.`,
-    "",
-    "Next: nothing. Setup is finished.",
+    ...buildNext(ctx.answers.brief),
   );
   return 0;
 }
@@ -269,8 +279,7 @@ export function finish(root: string, fixtureFile: string | undefined, scriptDir:
       "",
       "DONE",
       "Setup is finished: the setup files are removed and committed. Fixture mode skipped the push and the deploy checks.",
-      "",
-      "Next: nothing. Setup is finished.",
+      ...buildNext(ctx.answers.brief),
     );
     return 0;
   }

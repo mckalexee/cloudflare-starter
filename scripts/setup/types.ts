@@ -10,6 +10,7 @@ export type SignIn = "github" | "bearer" | "access";
 
 /** The keys of the questions that the script asks the person. */
 export type QuestionKey =
+  | "brief"
   | "display-name"
   | "description"
   | "parts"

@@ -26,11 +26,12 @@
 //
 // `--finish` strips the remaining marker lines and rewrites the `Halves present:` line in
 // `AGENTS.md` to name what's left. It deletes `SETUP.md` and the `README.md` line that points to
-// it, because setup ends with `--finish`. It also deletes the setup script and its state files,
-// the block in `AGENTS.md` that says setup isn't finished, the `.gitignore` entry for the setup
-// state, the Cloudflare CLI dependency that only setup uses, the header sentences that explain the markers, the CI job that tests setup, and this
-// script itself. Markers can't remove text that `--finish` must delete, so these steps are text
-// edits.
+// it, because setup ends with `--finish`. It moves the brief from `setup.json` into `AGENTS.md`.
+// It also deletes the setup script and its state files, the block in `AGENTS.md` that says setup
+// isn't finished, the `.gitignore` entry for the setup state, the Cloudflare CLI dependency that
+// only setup uses, the header sentences that explain the markers, the CI job that tests setup,
+// and this script itself. Markers can't remove text that `--finish` must delete, so these steps
+// are text edits.
 //
 // The script plans every change in memory and writes nothing when any check fails, so a stale
 // path or a missing anchor leaves the tree as it was. It runs before `pnpm install`, so it uses
@@ -91,6 +92,8 @@ const SETUP_BLOCK_START = "<!-- setup:begin -->";
 const SETUP_BLOCK_END = "<!-- setup:end -->";
 const SETUP_IGNORE = "setup.local.json";
 const SETUP_DEPENDENCY = "cf";
+const SETUP_STATE = "setup.json";
+const BRIEF_HEADING = "## What to build";
 const AGENTS = "AGENTS.md";
 const SETUP = "SETUP.md";
 const README = "README.md";
@@ -1032,6 +1035,51 @@ function removeSetupBlock(text: string): string {
   return tidySeams(lines, [start]).join("\n");
 }
 
+// The brief that setup recorded in `setup.json`: what the project is for and what to build first.
+function readBrief(ws: Workspace): string | undefined {
+  if (!isPresent(ws, SETUP_STATE)) {
+    return undefined;
+  }
+  const state: unknown = JSON.parse(ws.read(SETUP_STATE));
+  if (typeof state !== "object" || state === null || !("answers" in state)) {
+    return undefined;
+  }
+  const { answers } = state;
+  return typeof answers === "object" &&
+    answers !== null &&
+    "brief" in answers &&
+    typeof answers.brief === "string"
+    ? answers.brief
+    : undefined;
+}
+
+// Adds the brief to `AGENTS.md` before its first section, where a coding agent reads it at the
+// start of work. The note under it keeps the section true after the plan changes.
+function addBrief(text: string, brief: string): string {
+  if (text.includes(`\n${BRIEF_HEADING}\n`)) {
+    return text;
+  }
+  const lines = text.split("\n");
+  const at = lines.findIndex((line) => line.startsWith("## "));
+  if (at === -1) {
+    throw new PruneError("expected a section heading to put the brief before.");
+  }
+  const briefSection = [
+    BRIEF_HEADING,
+    "",
+    ...wrapComment(brief, "", readPrintWidth()),
+    "",
+    ...wrapComment(
+      "The person who started this project wrote this brief during setup. Change it as the plan changes, and delete this section once it stops helping.",
+      "",
+      readPrintWidth(),
+    ),
+    "",
+  ];
+  lines.splice(at, 0, ...briefSection);
+  return lines.join("\n");
+}
+
 // Deletes the `.gitignore` entry for the setup state and the comment line above it.
 function removeSetupIgnore(text: string): string {
   const lines = text.split("\n");
@@ -1259,6 +1307,14 @@ function planFinish(ws: Workspace, report: Report): void {
       description: "remove the block that says setup isn't finished",
       apply: removeSetupBlock,
     });
+    const brief = readBrief(ws);
+    if (brief !== undefined) {
+      edits.push({
+        file: AGENTS,
+        description: "add the brief from setup as the What to build section",
+        apply: (text) => addBrief(text, brief),
+      });
+    }
   } else {
     notices.push(`${AGENTS} doesn't exist, so no Halves present line was rewritten.`);
   }

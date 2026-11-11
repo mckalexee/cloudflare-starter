@@ -25,7 +25,7 @@ function expectedQuestions(scenario: Scenario, world: WorldOptions): string[] {
   const web = parts.includes("web");
   const mode = mcp ? scenario["sign-in"] : undefined;
   const access = (web && scenario["web-access"] === "private") || mode === "access";
-  const expected = ["display-name", "description", "parts", "hostname", "license"];
+  const expected = ["brief", "display-name", "description", "parts", "hostname", "license"];
   if (mcp) {
     expected.push("sign-in");
   }
@@ -98,6 +98,60 @@ function accepted(key: string, value: string, ctx: Context): void {
   const result = checkAnswer(key, value, ctx);
   assert.ok(result.ok, result.ok ? "" : result.reason);
 }
+
+describe("answers from the interview", () => {
+  // The agent records what the interview settled before the script asks, in this order, so each
+  // key's prerequisites are already answered.
+  const INTERVIEW_ORDER = [
+    "brief",
+    "display-name",
+    "description",
+    "parts",
+    "sign-in",
+    "web-access",
+    "who-may-sign-in",
+    "allowed-github",
+    "hostname",
+  ];
+
+  for (const [name, scenario] of Object.entries(SCENARIOS)) {
+    test(`${name}: answer accepts every interview key before the script asks`, () => {
+      const ctx = freshContext();
+      const answers: Record<string, string> = { ...SHARED_ANSWERS, ...scenario };
+      for (const key of INTERVIEW_ORDER) {
+        const value = answers[key];
+        if (value === undefined) {
+          continue;
+        }
+        const check = checkAnswer(key, value, ctx);
+        if (!check.ok && /applies only when/.test(check.reason)) {
+          // A key that doesn't apply to this scenario, such as allowed-github without GitHub.
+          continue;
+        }
+        assert.ok(check.ok, `${key}: ${check.ok ? "" : check.reason}`);
+        ctx.answers[check.key] = check.value;
+      }
+      // The run then starts with the next unanswered question, never one the interview settled.
+      const action = plan(ctx);
+      assert.ok(
+        action.kind !== "question" || !INTERVIEW_ORDER.includes(action.key),
+        `the script asked ${action.kind === "question" ? action.key : ""} again`,
+      );
+    });
+  }
+
+  test("the brief comes first, and a short one is refused", () => {
+    assert.deepEqual(plan(freshContext()), { kind: "question", key: "brief", problem: undefined });
+    const result = checkAnswer("brief", "A tool.", freshContext());
+    assert.ok(!result.ok && /characters/.test(result.reason));
+    const spaced = checkAnswer(
+      "brief",
+      "  Tracks   requests\n for the team, and lists them first.  ",
+      freshContext(),
+    );
+    assert.ok(spaced.ok && spaced.value === "Tracks requests for the team, and lists them first.");
+  });
+});
 
 describe("answer", () => {
   test("refuses the project name and the owner, which come from the origin remote", () => {

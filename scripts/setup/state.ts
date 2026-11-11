@@ -15,6 +15,7 @@ export const SHARED_FILE = "setup.json";
 export const LOCAL_FILE = "setup.local.json";
 
 const ANSWER_ORDER: AnswerKey[] = [
+  "brief",
   "display-name",
   "description",
   "parts",

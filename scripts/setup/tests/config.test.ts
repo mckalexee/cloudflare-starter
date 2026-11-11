@@ -8,7 +8,7 @@ import {
   instructionsSentence,
   TEMPLATE_INSTRUCTIONS_SENTENCE,
 } from "../config.ts";
-import { parseJson } from "../remote.ts";
+import { excerpt, parseJson } from "../remote.ts";
 
 // `describe()` and `test()` from `node:test` return promises that the test runner awaits.
 /* oxlint-disable typescript/no-floating-promises */
@@ -80,5 +80,16 @@ describe("JSON from tools that print notices first", () => {
   test("reads plain JSON and returns undefined without any", () => {
     assert.deepEqual(parseJson('[{"id":"1"}]'), [{ id: "1" }]);
     assert.equal(parseJson("No JSON here."), undefined);
+  });
+});
+
+describe("a shortened header", () => {
+  test("keeps the part that the check matched", () => {
+    const header =
+      'Bearer realm="OAuth", error="invalid_token", error_description="The access token is missing or invalid, so sign in again before you call this endpoint", resource_metadata="https://acme-tools.acme.workers.dev/.well-known/cloudflare-access-protected-resource/mcp"';
+    const short = excerpt(header, "cloudflare-access-protected-resource");
+    assert.ok(short.includes("cloudflare-access-protected-resource"), short);
+    assert.ok(short.length <= 206);
+    assert.equal(excerpt("Bearer", "Bearer"), "Bearer");
   });
 });

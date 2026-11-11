@@ -1,10 +1,11 @@
 # Set up a project from this template
 
 This runbook is for a coding agent that starts in an empty folder with only a link to this
-template. You create the project's repository, then run `node scripts/setup.ts` in a loop. The
-script asks the questions, hands you the tasks that need the person, does the rest itself, and
-checks the result. Setup is finished when the last block that `node scripts/setup.ts finish`
-prints starts with `DONE`.
+template and the person's idea. You interview the person about what they want to build, create
+the project's repository, and run `node scripts/setup.ts` in a loop. The script hands you the
+tasks that need the person, does the rest itself, and checks the result. Setup is finished when
+the last block that `node scripts/setup.ts finish` prints starts with `DONE`. Then you build the
+first things that the person asked for.
 
 ## Rules
 
@@ -12,9 +13,12 @@ prints starts with `DONE`.
   everything this runbook does: creating the private GitHub repository, every resource that the
   script's summary lists in GitHub and Cloudflare, pushes to `main`, and the deploys that the
   deploy workflow runs. Ask before you do anything else in either account.
-- **Set up first, build second.** Don't change the project's code, add features, or edit the
-  setup files until setup is finished. If the person asks for a feature, note it and come back
-  to it after `finish`.
+- **Set up, then build.** Don't change the project's code or edit the setup files until `finish`
+  prints `DONE`. Then build what the brief names, as
+  [Build what the person asked for](#build-what-the-person-asked-for) describes. If the person
+  asks for more along the way, add it to the brief.
+- **Answer from the interview.** Never ask the person a question that the interview already
+  answered. Record the answer with `node scripts/setup.ts answer` and go on.
 - **One question at a time.** Ask each question that the script prints through your structured
   question tool when you have one, such as `AskUserQuestion` in Claude Code. Offer the script's
   options and mark its suggested answer. Without such a tool, ask the one question in a message
@@ -34,6 +38,54 @@ prints starts with `DONE`.
   `node scripts/setup.ts answer`. When the script stops with a failure, fix the cause it names,
   or relay it to the person when only they can fix it.
 
+## Interview
+
+Start from what the person already said, and ask only what's missing, one question at a time,
+through your question tool. Ask in the person's terms, never in the template's, such as "parts"
+or "sign-in mode".
+
+1. **What are you building, and what should it do for the people who use it?** Keep asking
+   follow-up questions until you can name the first tools or pages that you'd build. A one-line
+   answer always gets a follow-up. Don't skip or rush this question.
+2. **Who uses it?** Only you, named people or a team, or anyone.
+3. **How do they use it?** From an AI assistant such as Claude, in a browser, or both.
+4. **If from an assistant, what do its tools need?** To act on each user's GitHub account, only
+   to know who the user is, or to serve a single client of your own, such as one script.
+5. **Where does it run?** On a domain that's on Cloudflare, or on the free `workers.dev` address.
+
+Turn the answers into the script's answers with this table:
+
+| From the interview                                                   | Script answers                                                                                        |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| An assistant only, a browser only, or both                           | `parts`: `mcp`, `web`, or `mcp,web`                                                                   |
+| The tools act on each user's GitHub account                          | `sign-in`: `github`, and `allowed-github`: the users' GitHub logins, or `*` for anyone                |
+| The tools only need to know who the user is, and the users are named | `sign-in`: `access`, and `who-may-sign-in`: their email addresses, an email domain, or both           |
+| The tools need to know the user, and anyone may use them             | `sign-in`: `github`, and `allowed-github`: `*`                                                        |
+| A single client of the person's own                                  | `sign-in`: `bearer`                                                                                   |
+| Browser users are anyone                                             | `web-access`: `public`                                                                                |
+| Browser users are only the person or named people                    | `web-access`: `private`, and `who-may-sign-in`: their email addresses, an email domain, or both       |
+| A domain on Cloudflare                                               | `hostname`: a hostname on that zone, such as `tools.example.com`                                      |
+| The free address                                                     | `hostname`: `workers.dev`                                                                             |
+| What they're building                                                | `brief`, `description`: one sentence that starts with a verb, and `display-name`: up to 60 characters |
+
+The script enforces these rules, so recommend a combination that keeps them:
+
+- A private web app next to `github` or `bearer` sign-in needs a custom domain. Without a domain,
+  recommend `access` sign-in for named users, or a public web app.
+- `access` sign-in and a private web app need a Zero Trust organization, which is free. Access
+  admits only the email addresses and domains that you name, never anyone.
+- With `access` sign-in, MCP sign-in doesn't work on pull request Previews.
+- A custom hostname must be on a zone in the person's Cloudflare account.
+
+### Playback
+
+Write the **brief**: two to four sentences, in your words, that say what the project does for
+its users and name the first tools or pages to build. It's 40 to 800 characters.
+
+Before you create anything, tell the person in a few plain sentences what you'll set up and why
+each choice follows from what they said, and read them the brief. Then ask one question: is this
+right? On a no, go back to the interview question that their answer changes.
+
 ## Bootstrap
 
 1. Check the tools. Each command must succeed:
@@ -49,8 +101,8 @@ prints starts with `DONE`.
    script installs the dependencies in its install step. If `gh auth status` reports no login, ask
    the person to run `gh auth login` in their terminal. Then check again.
 
-2. Ask for the **project name**: lowercase letters, digits, and hyphens, starting with a letter,
-   at most 40 characters, such as `acme-tools`. It names the repository, the Worker, and the KV
+2. Ask for the **project name**, and suggest one from the brief: lowercase letters, digits, and
+   hyphens, starting with a letter, at most 40 characters, such as `acme-tools`. It names the repository, the Worker, and the KV
    namespaces. Previews prepend `pr-<number>-` to it, which is why it stays short.
 
 3. Ask for the **GitHub owner**: the person's account or one of their organizations. Suggest the
@@ -73,8 +125,16 @@ prints starts with `DONE`.
    template. Wait five seconds, run `git pull origin main`, and check again, up to three times.
    If the branch is still empty, stop and report the output to the person.
 
-5. From the project folder, start the loop. The script reads the project name and the owner from
-   the `origin` remote of the clone, so it never asks for them again.
+5. From the project folder, record what the interview settled, in this order, and skip each key
+   that doesn't apply to the choices: `brief`, `display-name`, `description`, `parts`, `sign-in`,
+   `web-access`, `who-may-sign-in`, `allowed-github`, and `hostname`. For example:
+
+   ```sh
+   node scripts/setup.ts answer brief "Tracks support requests for the Acme team. First, build a tool that lists open requests."
+   ```
+
+6. Start the loop. The script reads the project name and the owner from the `origin` remote of
+   the clone, so it never asks for them again.
 
 ## The loop
 
@@ -90,7 +150,7 @@ what comes next and whose last line starts with `Next:`.
 
 | Block                      | What you do                                                                                                                                                                                                            |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `QUESTION: <key>`          | Ask the question. Record the answer with `node scripts/setup.ts answer <key> <value>`, quoting a value that has spaces, and run the script again.                                                                      |
+| `QUESTION: <key>`          | If the interview settled it, record that answer. Otherwise ask the person. Record the answer with `node scripts/setup.ts answer <key> <value>`, quoting a value that has spaces, and run the script again.             |
 | `TASK: <id>`               | Relay the instruction and the link. Wait until the person says it's done, and run the script again. For `mcp-client`, record `done`, `not-now`, or `failed` with `answer`. For `renovate`, record `done` or `not-now`. |
 | `WAIT: <id>`               | Run the script again in about a minute. It's waiting on a GitHub Actions run, whose URL it prints. If the same run is still waiting after 30 minutes, report its URL to the person.                                    |
 | `DONE`                     | Relay the report, then run `node scripts/setup.ts finish`.                                                                                                                                                             |
@@ -137,17 +197,18 @@ change once a step used them, and neither can the project name or the owner, whi
 
 ## Two ways to stop
 
-Asking a question or relaying a task and waiting for the reply is part of the loop, not a stop.
-Stopping means ending your work while setup is unfinished or finished, and it happens in exactly
-one of these two ways:
+Asking a question or relaying a task and waiting for the reply is part of the work, not a stop.
+Stopping means ending your work, and it happens in exactly one of these two ways:
 
-1. The last block that `node scripts/setup.ts finish` prints starts with `DONE`, and it exits
-   with code 0. A plain run's `DONE` isn't the end: it means that `finish` comes next.
+1. The first things from the brief are in a pull request whose Preview checks pass, as
+   [Build what the person asked for](#build-what-the-person-asked-for) describes.
 2. You have nothing left to do and the run waits on one named person task. Then say
    `Setup is not finished. Waiting on: <task>`, followed by the task's instruction, the project
    folder, and the prompt that resumes the run in a new session. The script prints all three.
 
-Don't stop anywhere else, and don't call setup finished while a check is open.
+Don't stop anywhere else: not half set up, and not right after `finish`. Setup is finished when
+the last block that `finish` prints starts with `DONE`. A plain run's `DONE` means that `finish`
+comes next.
 
 ## Finish
 
@@ -177,6 +238,24 @@ Lead with what's still open: each task that the person answered with `not-now`, 
 instruction that the `DONE` report gives for it. Then relay the rest of the `DONE` report: the
 repository, the parts and sign-in mode, the hostname and the MCP URL, the deploy run, and the live
 checks.
+
+## Build what the person asked for
+
+Setup being finished isn't the end of the request. `finish` moves the brief into the
+**What to build** section of `AGENTS.md`, and its `DONE` block prints it. Then:
+
+1. Create a branch, such as `feat/first-tools`.
+2. Build the first tools or pages that the brief names, with the project's own rules in
+   `AGENTS.md`. For MCP tools, follow the checklists "Replace the example tools" and "Add an MCP
+   tool". For pages, follow "Add a route".
+3. Run `pnpm verify` until it passes, then commit and push the branch.
+4. Open a pull request with `gh pr create`. The Preview workflow deploys a Preview and comments
+   its URL. Wait until the pull request's checks pass.
+5. Give the person the pull request and the Preview URL. Merging deploys to production, so leave
+   the merge to them.
+
+Keep the **What to build** section true as the plan changes, or delete it when it stops
+helping.
 
 ## Troubleshooting
 

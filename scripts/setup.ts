@@ -13,7 +13,8 @@
 // that file and turns off every remote step, so CI can run the local half without accounts.
 import path from "node:path";
 
-import { say, StepError } from "./setup/exec.ts";
+import { conflicts } from "./setup/derive.ts";
+import { ProbeError, say, StepError } from "./setup/exec.ts";
 import { finish } from "./setup/finish.ts";
 import {
   renderDone,
@@ -29,7 +30,7 @@ import {
 import { plan } from "./setup/planner.ts";
 import { loadContext, RefusalError } from "./setup/probes.ts";
 import { checkAnswer, precheckAnswer } from "./setup/questions.ts";
-import { readShared, updateLocal, writeShared } from "./setup/state.ts";
+import { recordResources, readShared, updateLocal, writeShared } from "./setup/state.ts";
 import { STEPS } from "./setup/steps.ts";
 
 const FIXTURE =
@@ -113,6 +114,15 @@ function next(root: string): number {
       throw error;
     }
     print(renderStepDone());
+    if (action.id === "summary") {
+      // The summary ends the run, so the agent relays it before anything changes in GitHub or
+      // Cloudflare.
+      say(
+        "",
+        `Next: relay this summary to the person, then run \`${RUN}\` again to start the changes.`,
+      );
+      return 0;
+    }
   }
   say("", `Result: the script ran ${String(MAX_STEPS)} steps. Next: run \`${RUN}\` again.`);
   return 0;
@@ -133,6 +143,18 @@ function answer(root: string, key: string, value: string): number {
   const check = checkAnswer(key, value, ctx);
   if (!check.ok) {
     return refuseAnswer(key, check.reason);
+  }
+  if (check.key === "existing-resources" && check.value === "earlier-attempt") {
+    // The person vouched for the resources, so their IDs become this project's.
+    const found = conflicts(ctx);
+    recordResources(root, Object.fromEntries(found.map((conflict) => [conflict.key, conflict.id])));
+    print([
+      `ANSWERED: ${check.key}`,
+      `Recorded ${found.map((conflict) => `${conflict.label} (${conflict.id})`).join(", ")} in setup.json as this project's.`,
+      "",
+      `Next: run \`${RUN}\` again.`,
+    ]);
+    return 0;
   }
   if (check.store === "shared") {
     writeShared(root, { ...readShared(root), [check.key]: check.value });
@@ -190,6 +212,15 @@ function main(argv: string[]): number {
   } catch (error) {
     if (error instanceof RefusalError) {
       print([`REFUSED: ${command ?? "setup"}`, error.message]);
+      return 1;
+    }
+    if (error instanceof ProbeError) {
+      print([
+        `FAILED: ${command ?? "setup"}`,
+        `A check of GitHub or Cloudflare failed, so the script stopped instead of guessing. ${error.message}`,
+        "",
+        `Next: fix the cause, such as a missing login or a network problem, then run \`${RUN}\` again.`,
+      ]);
       return 1;
     }
     throw error;

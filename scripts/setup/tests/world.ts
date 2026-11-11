@@ -70,6 +70,7 @@ const WORLDS = new WeakMap<Context, WorldOptions>();
 /** A context like a fresh clone of a new project, before any login. */
 export function freshContext(options: WorldOptions = {}): Context {
   const ctx: Context = {
+    resources: {},
     answers: {},
     local: { answers: {}, secretHashes: {} },
     repo: {
@@ -87,6 +88,7 @@ export function freshContext(options: WorldOptions = {}): Context {
       verified: false,
       clean: true,
       apiTokenFile: "/home/octocat/.config/setup-octocat-acme-tools/cloudflare-api-token",
+      gitEmail: "ada@example.com",
     },
     facts: {
       ...structuredClone(EMPTY_FACTS),
@@ -228,6 +230,10 @@ export function doStep(ctx: Context, id: string): void {
       break;
     case "kv-namespaces":
       facts.kvNamespaces = { production: "kv-production", preview: "kv-preview" };
+      // The step records the IDs in `setup.json`, which changes the tree.
+      ctx.resources.kvProduction = "kv-production";
+      ctx.resources.kvPreview = "kv-preview";
+      touchTree(ctx);
       break;
     case "access-otp":
       if (facts.accessOrganization !== null) {
@@ -272,6 +278,10 @@ export function doStep(ctx: Context, id: string): void {
     case "worker-secrets":
       facts.workerSecrets = workerSecretNames(answers);
       local.secretHashes.production = repo.secretSources.production ?? "";
+      facts.worker = { tag: "worker-tag" };
+      ctx.resources.worker = "worker-tag";
+      touchTree(ctx);
+      facts.pushed = false;
       break;
     case "preview-secrets":
       facts.previewSecrets = previewSecretNames(answers);
@@ -362,6 +372,9 @@ export function walk(
         if (ctx.facts.deploy !== null) {
           ctx.facts.deploy.status = "success";
         }
+        // The deploy creates the Worker of a project without secrets.
+        ctx.facts.worker ??= { tag: "worker-tag" };
+        ctx.facts.repoDeployed = true;
         ctx.facts.live = [{ name: "healthz", ok: true, detail: "200" }];
         break;
     }

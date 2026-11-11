@@ -44,6 +44,14 @@ function githubAppsUrl(ctx: Context): string {
     : "https://github.com/settings/applications/new";
 }
 
+// The Claude Code server entry for bearer mode. Its `headersHelper` command reads the token from
+// `.dev.vars` when Claude Code connects, so the token stays out of every command line.
+function bearerServerJson(ctx: Context, url: string): string {
+  const devVars = `${ctx.repo.root}/.dev.vars`;
+  const helper = `echo "{\\"Authorization\\":\\"Bearer $(grep ^MCP_BEARER_TOKEN= ${devVars} | cut -d= -f2-)\\"}"`;
+  return JSON.stringify({ type: "http", url, headersHelper: helper });
+}
+
 function mcpUrl(ctx: Context): string {
   return `https://${host(ctx) ?? "<host>"}/mcp`;
 }
@@ -66,8 +74,8 @@ export const TASKS: TaskSpec[] = [
     title: "Sign in to Wrangler.",
     applies: () => true,
     done: (ctx) => ctx.facts.wrangler !== null,
-    instruction: (ctx) => [
-      `In the project folder, run \`npx wrangler@${ctx.repo.wranglerVersion} login\` and approve the request in your browser.`,
+    instruction: () => [
+      `In your terminal, in the project folder, run \`pnpm exec wrangler login\` and approve the request in your browser.`,
     ],
     link: () => "https://developers.cloudflare.com/workers/wrangler/commands/#login",
     detection: () => "`wrangler whoami` lists at least one account.",
@@ -122,6 +130,12 @@ export const TASKS: TaskSpec[] = [
               "GitHub rejected the client ID and secret in `.dev.vars`. Generate a new client secret and replace both values.",
             ]
           : [];
+      if (lines.length === 0 && (ctx.facts.workerSecrets ?? []).includes("GITHUB_CLIENT_ID")) {
+        // A fresh clone has no `.dev.vars`, but the Worker already uses an OAuth app.
+        return [
+          "The Worker already has a GitHub OAuth app from an earlier run, so don't register another one. Open the existing app, select Generate a new client secret, and write its client ID and the new secret into `.dev.vars` in the project folder as `GITHUB_CLIENT_ID=<client ID>` and `GITHUB_CLIENT_SECRET=<client secret>`. The script uploads the new secret. Don't paste them into the conversation.",
+        ];
+      }
       return [
         ...lines,
         `Register a GitHub OAuth app named "${ctx.answers["display-name"] ?? ctx.repo.origin.name}" with the homepage URL https://${hostname} and two callback URLs, https://${hostname}/callback and http://localhost:5173/callback, with wildcard matching off. Then select Generate a new client secret, and write both values into \`.dev.vars\` in the project folder as \`GITHUB_CLIENT_ID=<client ID>\` and \`GITHUB_CLIENT_SECRET=<client secret>\`, each on its own line. Don't paste them into the conversation.`,
@@ -147,6 +161,11 @@ export const TASKS: TaskSpec[] = [
               "GitHub rejected the Preview client ID and secret in `.dev.vars`. Generate a new client secret and replace both values.",
             ]
           : [];
+      if (lines.length === 0 && ctx.facts.previewSecrets.includes("GITHUB_CLIENT_ID")) {
+        return [
+          "The Preview base config already has a GitHub OAuth app from an earlier run, so don't register another one. Open the existing Previews app, generate a new client secret, and write its client ID and the new secret into `.dev.vars` as `PREVIEW_GITHUB_CLIENT_ID=<client ID>` and `PREVIEW_GITHUB_CLIENT_SECRET=<client secret>`.",
+        ];
+      }
       return [
         ...lines,
         `Register a second GitHub OAuth app, used only by Previews, named "${ctx.answers["display-name"] ?? ctx.repo.origin.name} Previews" with the callback URL https://${subdomain}.workers.dev/callback and wildcard matching on. Wildcard matching lets any Worker on that subdomain receive sign-in codes for this app, which is why it's separate from production. Generate a client secret, and write both values into \`.dev.vars\` as \`PREVIEW_GITHUB_CLIENT_ID=<client ID>\` and \`PREVIEW_GITHUB_CLIENT_SECRET=<client secret>\`.`,
@@ -171,7 +190,11 @@ export const TASKS: TaskSpec[] = [
           ? [
               "Cloudflare rejected the token in the file. Create a new token and replace the file's contents.",
             ]
-          : [];
+          : ctx.facts.githubSecrets.includes("CLOUDFLARE_API_TOKEN")
+            ? [
+                "The repository already has a CLOUDFLARE_API_TOKEN secret from an earlier run, but its token file is gone. A new token replaces the old one in GitHub, and you can delete the old token in the dashboard afterward.",
+              ]
+            : [];
       return [
         ...lines,
         `Open the link, which fills in the permissions, and pick the account ${accountLabel(ctx)}. Scope the account permissions to that account` +
@@ -184,6 +207,18 @@ export const TASKS: TaskSpec[] = [
     link: apiTokenLink,
     detection: (ctx) =>
       `The file ${ctx.repo.apiTokenFile} exists, and Cloudflare's token verification accepts the token in it.`,
+  },
+  {
+    id: "new-name",
+    block: "first",
+    title: "Start again with another project name.",
+    applies: (ctx) => ctx.answers["existing-resources"] === "something-else",
+    done: () => false,
+    instruction: (ctx) => [
+      `Resources named after ${ctx.repo.origin.name} already exist in the account and belong to something else, so setup won't use this name. Create a new repository from the template with another name, as SETUP.md describes, and run setup there. This repository can be deleted.`,
+    ],
+    link: () => "https://github.com/mckalexee/cloudflare-starter/blob/main/SETUP.md",
+    detection: () => "It doesn't. Setup continues in the new repository.",
   },
   {
     id: "mcp-client",
@@ -201,7 +236,7 @@ export const TASKS: TaskSpec[] = [
       const failed = ctx.local.answers["mcp-client"] === "failed";
       const connect =
         mode === "bearer"
-          ? `In your terminal, from the project folder, run \`claude mcp add --transport http ${name} ${url} --header "Authorization: Bearer $(grep '^MCP_BEARER_TOKEN=' .dev.vars | cut -d= -f2-)"\`, so the token stays out of the conversation. Then ask Claude to call \`example_echo_message\`.`
+          ? `In your terminal, run \`claude mcp add-json ${name} '${bearerServerJson(ctx, url)}'\`. Claude Code then reads the token from \`.dev.vars\` each time it connects, so the token never appears in a command or its configuration. Then ask Claude to call \`example_echo_message\`.`
           : `Add ${url} as a custom connector in claude.ai under Settings > Connectors > Add custom connector, or run \`claude mcp add --transport http ${name} ${url}\` and then \`/mcp\` in Claude Code. Sign in, then ask Claude to call \`example_echo_message\`.`;
       if (!failed) {
         return [connect];

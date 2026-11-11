@@ -57,7 +57,12 @@ function taskItem(id: TaskId): Item {
     remote: undefined,
     applies: spec.applies,
     satisfied: spec.done,
-    action: (ctx) => ({ kind: "task", id, remaining: remainingTasks(ctx, spec.block) }),
+    action: (ctx) => ({
+      kind: "task",
+      id,
+      remaining: remainingTasks(ctx, spec.block),
+      maybeMore: spec.block === "first" && zeroTrustUnknown(ctx),
+    }),
   };
 }
 
@@ -109,12 +114,12 @@ function includesAll(names: readonly string[] | null, wanted: readonly string[])
 }
 
 /**
- * The whole run, in order. The questions that need no account come first, so every person task
- * is known before the first one, and the task count only goes down. The logins follow, because
- * the remaining questions suggest answers from the accounts. Then the other person tasks and the
- * summary, so the person's work comes in one block before the script changes anything. The
- * Cloudflare CLI login and the Zero Trust organization wait for the install, which brings the
- * CLI. The script's own steps follow, and the two last tasks end the run.
+ * The whole run, in order. The questions that need no account come first. The local steps
+ * through the install follow, because the install brings the Cloudflare CLI. Then the person's
+ * block: the logins, the questions that suggest answers from the accounts, and the other person
+ * tasks, back to back while the person is at the keyboard. The summary ends that block and stops
+ * the run, so the agent relays it before anything changes in GitHub or Cloudflare. The script's
+ * own steps follow, and the two last tasks end the run.
  */
 const ITEMS: Item[] = [
   questionItem("display-name"),
@@ -124,25 +129,26 @@ const ITEMS: Item[] = [
   questionItem("who-may-sign-in"),
   questionItem("oauth-previews"),
   questionItem("license"),
+  stepItem("agents-block", { satisfied: (ctx) => ctx.repo.agentsBlock }),
+  stepItem("rename", { satisfied: (ctx) => ctx.repo.renameLeftovers.length === 0 }),
+  stepItem("prune", { satisfied: (ctx) => treeMatches(ctx.repo.tree, ctx.answers) }),
+  stepItem("install", { satisfied: (ctx) => ctx.repo.installed }),
   taskItem("login-github"),
   taskItem("login-wrangler"),
+  taskItem("login-cf"),
   questionItem("description"),
   questionItem("allowed-github"),
   questionItem("cloudflare-account"),
   questionItem("workers-subdomain"),
   questionItem("hostname"),
+  questionItem("existing-resources"),
+  taskItem("new-name"),
+  taskItem("zero-trust-org"),
+  questionItem("access-otp"),
   taskItem("github-oauth-app"),
   taskItem("github-oauth-app-previews"),
   taskItem("cloudflare-api-token"),
   stepItem("summary", { satisfied: (ctx) => ctx.local.summaryShown === true }),
-  stepItem("agents-block", { satisfied: (ctx) => ctx.repo.agentsBlock }),
-  stepItem("rename", { satisfied: (ctx) => ctx.repo.renameLeftovers.length === 0 }),
-  stepItem("prune", { satisfied: (ctx) => treeMatches(ctx.repo.tree, ctx.answers) }),
-  stepItem("install", { satisfied: (ctx) => ctx.repo.installed }),
-  // The Cloudflare CLI is a development dependency, so its login comes after the install.
-  taskItem("login-cf"),
-  taskItem("zero-trust-org"),
-  questionItem("access-otp"),
   stepItem("workers-subdomain", {
     remote: true,
     satisfied: (ctx) => ctx.facts.workersSubdomain !== null,
@@ -252,8 +258,21 @@ function isOpen(item: Item, ctx: Context, skipped: Set<string>): boolean {
 
 /** How many person tasks in a block are still open, the current one included. */
 export function remainingTasks(ctx: Context, block: "first" | "last"): number {
-  return TASKS.filter((spec) => spec.block === block && spec.applies(ctx) && !spec.done(ctx))
-    .length;
+  return TASKS.filter(
+    (spec) =>
+      spec.block === block &&
+      spec.applies(ctx) &&
+      !spec.done(ctx) &&
+      !(spec.id === "zero-trust-org" && zeroTrustUnknown(ctx)),
+  ).length;
+}
+
+/**
+ * Whether the Zero Trust organization task may still come. Until the Cloudflare CLI is signed in,
+ * the script can't read the organization, so the count of tasks says "one more if needed".
+ */
+export function zeroTrustUnknown(ctx: Context): boolean {
+  return accessUsed(ctx.answers) && ctx.facts.cf === null;
 }
 
 /** The IDs of every check that applies and isn't satisfied, in run order. */

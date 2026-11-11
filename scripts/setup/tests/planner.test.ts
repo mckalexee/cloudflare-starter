@@ -52,60 +52,79 @@ describe("a whole run", () => {
   }
 });
 
+const NO_ACCOUNT_QUESTIONS = new Set([
+  "display-name",
+  "parts",
+  "sign-in",
+  "web-access",
+  "who-may-sign-in",
+  "oauth-previews",
+  "license",
+]);
+
 describe("the order of a run", () => {
   for (const [scenarioName, scenario] of Object.entries(SCENARIOS)) {
-    test(`${scenarioName}: the person's tasks and the summary come before the first change`, () => {
-      const { actions } = walk(scenario, WORLDS["a new account"]);
-      const firstChange = actions.findIndex(
-        (action) => action.kind === "step" && action.id !== "summary",
-      );
-      const summary = actions.findIndex(
-        (action) => action.kind === "step" && action.id === "summary",
-      );
-      assert.ok(summary !== -1 && summary < firstChange);
-      const firstBlock = new Set(
-        TASKS.filter((spec) => spec.block === "first").map((spec) => spec.id),
-      );
-      // The Cloudflare CLI comes with the install, so its login, the Zero Trust organization,
-      // and the one-time PIN question come after the install and before any remote step.
-      const afterInstall = new Set(["login-cf", "zero-trust-org", "access-otp"]);
-      const installed = actions.findIndex(
-        (action) => action.kind === "step" && action.id === "install",
-      );
-      const firstRemote = actions.findIndex((action) => action.kind === "step" && action.remote);
-      actions.forEach((action, index) => {
-        const id =
-          action.kind === "task" ? action.id : action.kind === "question" ? action.key : "";
-        if (afterInstall.has(id)) {
-          assert.ok(index > installed && index < firstRemote, `${id} comes after the install`);
-        } else if (
-          (action.kind === "task" && firstBlock.has(action.id)) ||
-          action.kind === "question"
-        ) {
-          assert.ok(index < firstChange, `${id} comes before the first change`);
-        }
-        if (action.kind === "task" && !firstBlock.has(action.id)) {
-          const deployed = actions.findIndex((candidate) => candidate.kind === "wait");
-          assert.ok(index > deployed, `${action.id} comes after the deploy`);
-        }
+    for (const [worldName, world] of Object.entries(WORLDS)) {
+      test(`${scenarioName} in ${worldName}: local steps, then the person's block, then the summary`, () => {
+        const { actions } = walk(scenario, world);
+        const stepAt = (id: string) =>
+          actions.findIndex((action) => action.kind === "step" && action.id === id);
+        const firstStep = actions.findIndex((action) => action.kind === "step");
+        const installed = stepAt("install");
+        const summary = stepAt("summary");
+        const firstRemote = actions.findIndex((action) => action.kind === "step" && action.remote);
+        assert.equal(firstStep, stepAt("agents-block"));
+        assert.ok(installed < summary && summary < firstRemote);
+        const firstBlock = new Set(
+          TASKS.filter((spec) => spec.block === "first").map((spec) => spec.id),
+        );
+        actions.forEach((action, index) => {
+          if (action.kind === "question" && NO_ACCOUNT_QUESTIONS.has(action.key)) {
+            assert.ok(index < firstStep, `${action.key} comes before the local steps`);
+          } else if (action.kind === "question") {
+            assert.ok(
+              index > installed && index < summary,
+              `${action.key} is in the person's block`,
+            );
+          }
+          if (action.kind === "task" && firstBlock.has(action.id)) {
+            assert.ok(
+              index > installed && index < summary,
+              `${action.id} is in the person's block`,
+            );
+          }
+          if (action.kind === "step" && index > installed && index < summary) {
+            assert.fail(`the step ${action.id} interrupts the person's block`);
+          }
+          if (action.kind === "task" && !firstBlock.has(action.id)) {
+            const deployed = actions.findIndex((candidate) => candidate.kind === "wait");
+            assert.ok(index > deployed, `${action.id} comes after the deploy`);
+          }
+        });
       });
-    });
+    }
   }
 
-  test("the task count shrinks as the person finishes tasks", () => {
-    const { actions } = walk(SCENARIOS["both github private"] ?? {}, WORLDS["a new account"]);
-    const counts = actions.flatMap((action) =>
-      action.kind === "task" && action.id !== "mcp-client" && action.id !== "renovate"
-        ? [action.remaining]
-        : [],
-    );
-    assert.ok(counts.length > 1);
-    assert.deepEqual(
-      counts,
-      counts.toSorted((a, b) => b - a),
-    );
-    assert.equal(counts.at(-1), 1);
-  });
+  for (const [worldName, world] of Object.entries(WORLDS)) {
+    test(`the task count is right at every point, in ${worldName}`, () => {
+      for (const scenario of Object.values(SCENARIOS)) {
+        const { actions } = walk(scenario, world);
+        const tasks = actions.flatMap((action) =>
+          action.kind === "task" && action.id !== "mcp-client" && action.id !== "renovate"
+            ? [action]
+            : [],
+        );
+        tasks.forEach((current, index) => {
+          // Every later task in the block was counted, and at most one more was announced.
+          const later = new Set(tasks.slice(index).map((candidate) => candidate.id)).size;
+          assert.ok(
+            later === current.remaining || (current.maybeMore && later === current.remaining + 1),
+            `${current.id}: said ${String(current.remaining)}${current.maybeMore ? " or one more" : ""}, ${String(later)} followed`,
+          );
+        });
+      }
+    });
+  }
 });
 
 /** One way to reopen a check on a finished run. */

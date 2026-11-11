@@ -144,6 +144,8 @@ jobs:
             [allowed-github]="octocat"
             [oauth-previews]="no"
             [license]="mit-0"
+            # The fixture's KV namespaces exist before setup records them, so the loop adopts them.
+            [existing-resources]="earlier-attempt"
             [mcp-client]="not-now"
             [renovate]="not-now"
           )

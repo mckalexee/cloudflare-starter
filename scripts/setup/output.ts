@@ -57,12 +57,15 @@ export function renderQuestion(
 export function renderTask(ctx: Context, action: Extract<Action, { kind: "task" }>): string[] {
   const spec = task(action.id);
   const others = action.remaining - 1;
+  const maybe = action.maybeMore
+    ? ", and one more if the account has no Zero Trust organization yet"
+    : "";
   const lines = [
     `TASK: ${action.id}`,
     `Setup is not finished. Waiting on: ${spec.title}`,
-    others === 0
+    others === 0 && !action.maybeMore
       ? "This is the last person task in this block."
-      : `Person tasks left in this block: ${String(action.remaining)}, this one included.`,
+      : `Person tasks left in this block: ${String(action.remaining)}, this one included${maybe}.`,
     "",
     "Relay this instruction to the person:",
     ...spec.instruction(ctx),
@@ -125,12 +128,17 @@ export function renderWait(ctx: Context, action: Extract<Action, { kind: "wait" 
   ];
 }
 
-function closing(ctx: Context, key: "mcp-client" | "renovate", label: string): string {
-  const answer = ctx.local.answers[key];
-  if (answer === "done") {
-    return `- ${label}: done.`;
-  }
-  return `- ${label}: not now. To do it later: ${task(key).instruction(ctx).join(" ")} (${task(key).link(ctx)})`;
+// The tasks that the person answered with "not now", with the instruction for later.
+function openTasks(ctx: Context): string[] {
+  const keys: ("mcp-client" | "renovate")[] = hasMcp(ctx.answers)
+    ? ["mcp-client", "renovate"]
+    : ["renovate"];
+  return keys
+    .filter((key) => ctx.local.answers[key] !== "done")
+    .map(
+      (key) =>
+        `- ${task(key).title} To do it later: ${task(key).instruction(ctx).join(" ")} (${task(key).link(ctx)})`,
+    );
 }
 
 /** The lines for done, with a report built from what the script read back. */
@@ -144,6 +152,13 @@ export function renderDone(ctx: Context, action: Extract<Action, { kind: "done" 
       ? "Setup is finished. Every check passed."
       : "Setup is done except for the remote steps, which fixture mode turned off:",
     ...action.skipped.map((id) => `- ${id}: ${STEPS[id].title(ctx)}`),
+  );
+  const open = openTasks(ctx);
+  lines.push(
+    "",
+    ...(open.length === 0
+      ? ["Open tasks: none."]
+      : ["Open tasks, which the person answered with not now:", ...open]),
     "",
     "Report:",
     `- Repository: https://github.com/${owner}/${name}`,
@@ -170,9 +185,11 @@ export function renderDone(ctx: Context, action: Extract<Action, { kind: "done" 
     lines.push(`- Live check ${check.name}: ${check.ok ? "passed" : "failed"}. ${check.detail}`);
   }
   if (hasMcp(ctx.answers)) {
-    lines.push(closing(ctx, "mcp-client", "MCP client"));
+    lines.push(
+      `- MCP client: ${ctx.local.answers["mcp-client"] === "done" ? "connected" : "not now"}`,
+    );
   }
-  lines.push(closing(ctx, "renovate", "Renovate"));
+  lines.push(`- Renovate: ${ctx.local.answers.renovate === "done" ? "installed" : "not now"}`);
   lines.push(`- License: ${ctx.answers.license ?? "mit-0"}`);
   lines.push("", `Next: run \`${RUN} finish\` to remove the setup files.`);
   return lines;

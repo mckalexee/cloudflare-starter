@@ -6,6 +6,7 @@ import {
   accessUsed,
   accountId,
   accountLabel,
+  conflicts,
   customDomain,
   hasMcp,
   hasWeb,
@@ -285,11 +286,18 @@ export const QUESTIONS: QuestionSpec[] = [
       const entries = include.flatMap((rule) =>
         rule.startsWith("email:") || rule.startsWith("domain:") ? [rule.split(":")[1] ?? ""] : [],
       );
-      return entries.length === 0
+      if (entries.length > 0) {
+        return {
+          value: entries.join(","),
+          reason: "It's the policy of the existing Access application.",
+        };
+      }
+      const email = ctx.repo.gitEmail ?? ctx.facts.cf?.email ?? ctx.facts.wrangler?.email;
+      return email === undefined || email === null
         ? undefined
         : {
-            value: entries.join(","),
-            reason: "It's the policy of the existing Access application.",
+            value: email,
+            reason: "It's your own email address, from Git or the Cloudflare login.",
           };
     },
     invalid: never,
@@ -522,6 +530,41 @@ export const QUESTIONS: QuestionSpec[] = [
     invalid: never,
     locked: never,
   },
+  {
+    key: "existing-resources",
+    store: "local",
+    prompt:
+      "The Cloudflare account already has resources with this project's name. Are they from an earlier attempt at this setup?",
+    help: (ctx) => [
+      `Found: ${conflicts(ctx)
+        .map((conflict) => `${conflict.label} (${conflict.id})`)
+        .join(", ")}.`,
+      "Setup didn't create them in this repository, so it doesn't use them without your word.",
+    ],
+    options: () => [
+      {
+        value: "earlier-attempt",
+        label: "Yes. They're from an earlier attempt at this setup, so use them.",
+      },
+      {
+        value: "something-else",
+        label: "No. They belong to something else, so stop and choose another project name.",
+      },
+    ],
+    format: "",
+    parse: choice(["earlier-attempt", "something-else"]),
+    applies: always,
+    appliesWhen: "always",
+    needed: (ctx) => conflicts(ctx).length > 0,
+    suggest: () => undefined,
+    // An answer only counts until it's applied: "earlier-attempt" records the IDs, which ends the
+    // question, and "something-else" leads to the task of choosing another name.
+    invalid: (ctx) =>
+      ctx.answers["existing-resources"] === "earlier-attempt"
+        ? "the IDs aren't recorded yet"
+        : undefined,
+    locked: never,
+  },
 ];
 
 /** Looks up a question by key. */
@@ -621,6 +664,16 @@ export function checkAnswer(key: string, raw: string, ctx: Context): AnswerCheck
       return {
         ok: false,
         reason: `The ${key} answer can't change from ${previous}, because ${reason}. To use another value, start again from a new repository created from the template.`,
+      };
+    }
+  }
+  if (key === "web-access" && ctx.answers.hostname === "workers.dev") {
+    const next = { ...ctx.answers, "web-access": parsed.value };
+    const reason = hostUsed(ctx);
+    if (needsCustomDomain(next) && reason !== undefined) {
+      return {
+        ok: false,
+        reason: `A private web app next to GitHub OAuth or bearer mode needs a custom domain, and the hostname can't change from workers.dev anymore, because ${reason}. Keep the web app public, or start again from a new repository created from the template.`,
       };
     }
   }

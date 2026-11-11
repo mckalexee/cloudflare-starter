@@ -265,15 +265,15 @@ workflow's health check reaches the Worker instead of the Access login page. `by
 }
 ```
 
-You can also protect the Worker itself from **Workers & Pages** > your Worker > **Access**, which
-covers every hostname and Preview of the Worker. Use the AUD of whichever application protects
-the hostname.
+The same two applications work on the Worker's `workers.dev` hostname,
+`<name>.<subdomain>.workers.dev`, and on a custom domain. Access accepts them before the Worker's
+first deploy, so the site is never reachable without a login. Setup creates them this way for
+every private web app.
 
-A self-hosted application needs a hostname on a zone in your account, so Worker-level Access is
-how you protect a site on its `workers.dev` hostname. It covers `/healthz` too, with no bypass,
-so leave the `HEALTHCHECK_URL` repository variable unset. It also covers Previews. The Preview
-workflow's `/healthz` check recognizes Access's answer and passes with a notice, so it can't tell
-whether a Preview serves traffic.
+Don't use Worker-level Access from **Workers & Pages** > your Worker > **Access** for production.
+It covers every path, `/healthz` included, so the deploy workflow's health check can't reach the
+Worker, and it needs a deployed Worker first. [Access on Previews](#access-on-previews) describes
+its one use here.
 
 <!-- @starter:mcp -->
 

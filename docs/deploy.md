@@ -200,8 +200,25 @@ keep the earlier code, revert the commit on `main`.
 
 ## Cloudflare API token
 
-Create an account-owned token under **Manage Account** > **Account API Tokens**, scoped to the one
-account, with these permissions:
+GitHub Actions deploys with an account-owned API token, scoped to the one account. The Cloudflare
+CLI's login can't create tokens, so the person creates it. Setup presents it as a task with a
+dashboard link that opens the **Account API Tokens** form with the permissions filled in:
+
+```text
+https://dash.cloudflare.com/?to=/:account/api-tokens&permissionGroupKeys=<permissions>&name=<name>%20GitHub%20Actions
+```
+
+`<permissions>` is the URL-encoded JSON list of the permissions in the table, such as
+`[{"key":"workers_scripts","type":"edit"}]`. Cloudflare documents the format under
+[API token template URLs](https://developers.cloudflare.com/fundamentals/api/how-to/account-owned-token-template/).
+The dashboard asks which account to use. The person scopes the token to that account, and the
+Workers Routes permission to the custom domain's zone, then saves the token as the only contents
+of `~/.config/setup-<owner>-<name>/cloudflare-api-token`, outside the repository. Setup verifies
+the token with `GET /accounts/<account-id>/tokens/verify`, sets the `CLOUDFLARE_API_TOKEN`
+repository secret from the file on standard input, and deletes the file when `finish` succeeds.
+
+To create the token by hand, go to **Manage Account** > **Account API Tokens** and add these
+permissions:
 
 | Permission                                      | Why                                                                                                |
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |

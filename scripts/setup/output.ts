@@ -91,7 +91,7 @@ export function renderStepStart(ctx: Context, id: StepId): string[] {
 
 /** The lines after a step that finished. */
 export function renderStepDone(): string[] {
-  return ["", "Result: the step finished.", `Next: run \`${RUN}\` again.`];
+  return ["", "Result: the step finished."];
 }
 
 /** The lines after a step that failed. */
@@ -112,7 +112,6 @@ export function renderSkipped(ctx: Context, id: StepId): string[] {
     STEPS[id].title(ctx),
     "",
     "Result: skipped, because fixture mode turns off every remote step.",
-    `Next: run \`${RUN}\` again.`,
   ];
 }
 

@@ -84,10 +84,10 @@ export const TASKS: TaskSpec[] = [
     instruction: (ctx) =>
       ctx.facts.cf === null
         ? [
-            `Run \`cf auth login --scopes ${CF_SCOPES}\` in your terminal and approve the request for the account ${accountLabel(ctx)}.`,
+            `In your terminal, in the project folder, run \`pnpm exec cf auth login --scopes ${CF_SCOPES}\` and approve the request for the account ${accountLabel(ctx)} within 5 minutes.`,
           ]
         : [
-            `The Cloudflare CLI is signed in, but not to the account ${accountLabel(ctx)}. Run \`cf auth login --force --scopes ${CF_SCOPES}\` and approve the request for that account.`,
+            `The Cloudflare CLI is signed in, but not to the account ${accountLabel(ctx)}, which Wrangler uses. In the project folder, run \`pnpm exec cf auth login --force --scopes ${CF_SCOPES}\` and approve the request for that account.`,
           ],
     link: () => "https://developers.cloudflare.com/cf/get-started/",
     detection: (ctx) =>

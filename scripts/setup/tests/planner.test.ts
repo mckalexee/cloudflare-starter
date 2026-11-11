@@ -66,12 +66,23 @@ describe("the order of a run", () => {
       const firstBlock = new Set(
         TASKS.filter((spec) => spec.block === "first").map((spec) => spec.id),
       );
+      // The Cloudflare CLI comes with the install, so its login, the Zero Trust organization,
+      // and the one-time PIN question come after the install and before any remote step.
+      const afterInstall = new Set(["login-cf", "zero-trust-org", "access-otp"]);
+      const installed = actions.findIndex(
+        (action) => action.kind === "step" && action.id === "install",
+      );
+      const firstRemote = actions.findIndex((action) => action.kind === "step" && action.remote);
       actions.forEach((action, index) => {
-        if (action.kind === "task" && firstBlock.has(action.id)) {
-          assert.ok(index < firstChange, `${action.id} comes before the first change`);
-        }
-        if (action.kind === "question") {
-          assert.ok(index < firstChange, `${action.key} is asked before the first change`);
+        const id =
+          action.kind === "task" ? action.id : action.kind === "question" ? action.key : "";
+        if (afterInstall.has(id)) {
+          assert.ok(index > installed && index < firstRemote, `${id} comes after the install`);
+        } else if (
+          (action.kind === "task" && firstBlock.has(action.id)) ||
+          action.kind === "question"
+        ) {
+          assert.ok(index < firstChange, `${id} comes before the first change`);
         }
         if (action.kind === "task" && !firstBlock.has(action.id)) {
           const deployed = actions.findIndex((candidate) => candidate.kind === "wait");
@@ -370,9 +381,15 @@ describe("answers that change late", () => {
 
   test("a failed deploy gets one rerun, then the script stops with the log", () => {
     const ctx = doneContext(SCENARIOS["web public"] ?? {});
-    ctx.facts.deploy = { url: "https://example.com/run", status: "failure", attempts: 1 };
+    const deploy = {
+      url: "https://example.com/run",
+      status: "failure" as const,
+      attempts: 1,
+      runId: 7,
+    };
+    ctx.facts.deploy = deploy;
     assert.deepEqual(plan(ctx), { kind: "step", id: "deploy-rerun", remote: true });
-    ctx.facts.deploy.attempts = 2;
+    deploy.attempts = 2;
     assert.deepEqual(plan(ctx), { kind: "step", id: "deploy-failed", remote: true });
   });
 });

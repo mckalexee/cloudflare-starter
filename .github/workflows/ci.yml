@@ -130,8 +130,9 @@ jobs:
             printf '# No secrets for this scenario.\n' > .dev.vars
           fi
 
-      # Each run prints one action. The loop answers questions and the two last tasks from the
-      # scenario, and fails on any other question or task, because the fixture covers the rest.
+      # Each run runs the due steps and ends with one action: a question, a task, a wait, or
+      # done. The loop answers questions and the two last tasks from the scenario, and fails on
+      # any other question or task, or on a wait, because the fixture covers the rest.
       - name: Run the setup loop
         run: |
           export SETUP_FIXTURE="$RUNNER_TEMP/fixture.json"
@@ -157,12 +158,12 @@ jobs:
               echo "::error::node scripts/setup.ts exited with code $status."
               exit "$status"
             fi
-            header=$(head -n 1 <<< "$output")
+            header=$(grep -E '^(QUESTION|TASK|WAIT|DONE)(:|$)' <<< "$output" | tail -n 1 || true)
             kind=${header%%:*}
             key=${header#*: }
             case "$kind" in
               DONE) exit 0 ;;
-              STEP) ;;
+              "") ;;
               QUESTION | TASK)
                 if [ -z "${answer[$key]+set}" ]; then
                   echo "::error::The script asks for $key, which this scenario doesn't answer."

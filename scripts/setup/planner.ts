@@ -113,7 +113,8 @@ function includesAll(names: readonly string[] | null, wanted: readonly string[])
  * is known before the first one, and the task count only goes down. The logins follow, because
  * the remaining questions suggest answers from the accounts. Then the other person tasks and the
  * summary, so the person's work comes in one block before the script changes anything. The
- * script's own steps follow, and the two last tasks end the run.
+ * Cloudflare CLI login and the Zero Trust organization wait for the install, which brings the
+ * CLI. The script's own steps follow, and the two last tasks end the run.
  */
 const ITEMS: Item[] = [
   questionItem("display-name"),
@@ -130,9 +131,6 @@ const ITEMS: Item[] = [
   questionItem("cloudflare-account"),
   questionItem("workers-subdomain"),
   questionItem("hostname"),
-  taskItem("login-cf"),
-  taskItem("zero-trust-org"),
-  questionItem("access-otp"),
   taskItem("github-oauth-app"),
   taskItem("github-oauth-app-previews"),
   taskItem("cloudflare-api-token"),
@@ -141,6 +139,10 @@ const ITEMS: Item[] = [
   stepItem("rename", { satisfied: (ctx) => ctx.repo.renameLeftovers.length === 0 }),
   stepItem("prune", { satisfied: (ctx) => treeMatches(ctx.repo.tree, ctx.answers) }),
   stepItem("install", { satisfied: (ctx) => ctx.repo.installed }),
+  // The Cloudflare CLI is a development dependency, so its login comes after the install.
+  taskItem("login-cf"),
+  taskItem("zero-trust-org"),
+  questionItem("access-otp"),
   stepItem("workers-subdomain", {
     remote: true,
     satisfied: (ctx) => ctx.facts.workersSubdomain !== null,

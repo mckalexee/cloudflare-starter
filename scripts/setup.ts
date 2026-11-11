@@ -14,118 +14,23 @@
 import path from "node:path";
 
 import { conflicts } from "./setup/derive.ts";
-import { ProbeError, say, StepError } from "./setup/exec.ts";
+import { ProbeError, say } from "./setup/exec.ts";
 import { finish } from "./setup/finish.ts";
-import {
-  renderDone,
-  renderQuestion,
-  renderSkipped,
-  renderStepDone,
-  renderStepFailed,
-  renderStepStart,
-  renderTask,
-  renderWait,
-  RUN,
-} from "./setup/output.ts";
-import { plan } from "./setup/planner.ts";
+import { runDueSteps } from "./setup/loop.ts";
+import { RUN } from "./setup/output.ts";
 import { loadContext, RefusalError } from "./setup/probes.ts";
 import { checkAnswer, precheckAnswer } from "./setup/questions.ts";
 import { recordResources, readShared, updateLocal, writeShared } from "./setup/state.ts";
-import { STEPS } from "./setup/steps.ts";
 
 const FIXTURE =
   process.env.SETUP_FIXTURE === undefined || process.env.SETUP_FIXTURE === ""
     ? undefined
     : path.resolve(process.env.SETUP_FIXTURE);
 
-// A run never runs more steps than this, so a step whose check never closes can't loop forever.
-const MAX_STEPS = 40;
-
 function print(lines: string[]): void {
   for (const line of lines) {
     say(line);
   }
-}
-
-function next(root: string): number {
-  const ran: string[] = [];
-  for (let count = 0; count < MAX_STEPS; count++) {
-    // Each step changes the repository or the accounts, so the facts are read again.
-    const ctx = loadContext(root, { fixture: FIXTURE });
-    const action = plan(ctx);
-    if (action.kind !== "step") {
-      if (ran.length > 0) {
-        say("");
-      }
-      switch (action.kind) {
-        case "question":
-          print(renderQuestion(ctx, action));
-          break;
-        case "task":
-          print(renderTask(ctx, action));
-          break;
-        case "wait":
-          print(renderWait(ctx, action));
-          break;
-        case "done":
-          print(renderDone(ctx, action));
-          break;
-      }
-      return 0;
-    }
-    if (ran.includes(action.id) && action.id !== "summary") {
-      print([
-        ...renderStepStart(ctx, action.id),
-        ...renderStepFailed(
-          ctx,
-          "The step ran, but its check is still open, so the script stopped.",
-        ),
-      ]);
-      return 1;
-    }
-    ran.push(action.id);
-    if (ran.length > 1) {
-      say("");
-    }
-    if (ctx.fixture && action.remote) {
-      if (action.id === "deploy-rerun" || action.id === "deploy-failed") {
-        print([
-          ...renderStepStart(ctx, action.id),
-          ...renderStepFailed(ctx, "The fixture's deploy fact says the deploy failed."),
-        ]);
-        return 1;
-      }
-      updateLocal(root, (state) => {
-        state.fixtureSkipped = [...(state.fixtureSkipped ?? "").split(","), action.id]
-          .filter((step) => step !== "")
-          .join(",");
-      });
-      print(renderSkipped(ctx, action.id));
-      continue;
-    }
-    print(renderStepStart(ctx, action.id));
-    try {
-      STEPS[action.id].run(ctx);
-    } catch (error) {
-      if (error instanceof StepError) {
-        print(renderStepFailed(ctx, error.message));
-        return 1;
-      }
-      throw error;
-    }
-    print(renderStepDone());
-    if (action.id === "summary") {
-      // The summary ends the run, so the agent relays it before anything changes in GitHub or
-      // Cloudflare.
-      say(
-        "",
-        `Next: relay this summary to the person, then run \`${RUN}\` again to start the changes.`,
-      );
-      return 0;
-    }
-  }
-  say("", `Result: the script ran ${String(MAX_STEPS)} steps. Next: run \`${RUN}\` again.`);
-  return 0;
 }
 
 function refuseAnswer(key: string, reason: string): number {
@@ -200,7 +105,7 @@ function main(argv: string[]): number {
   const [command, ...rest] = args;
   try {
     if (command === undefined) {
-      return next(root);
+      return runDueSteps(root, { fixture: FIXTURE });
     }
     if (command === "answer" && rest.length === 2) {
       return answer(root, rest[0] ?? "", rest[1] ?? "");

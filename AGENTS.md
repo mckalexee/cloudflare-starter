@@ -74,9 +74,9 @@ so a project can delete the web app without breaking the MCP endpoint.
 
 ### Replace the example tools
 
-Change these together: the tool modules in `src/mcp/tools/` and their tests in `test/mcp/`,
-`SCOPES` and `SCOPE_DESCRIPTIONS` in `src/env.ts`, and the `INSTRUCTIONS` text in
-`src/mcp/instructions.ts`.
+Change these together: the tools in `src/mcp/tools/`, their tests in `test/mcp/`, `SCOPES` and
+`SCOPE_DESCRIPTIONS` in `src/env.ts`, `INSTRUCTIONS` in `src/mcp/instructions.ts`, and what
+`README.md` and `docs/mcp.md` say about the example tools.
 
 <!-- @starter:end -->
 

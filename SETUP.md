@@ -46,7 +46,9 @@ or "sign-in mode".
 
 1. **What are you building, and what should it do for the people who use it?** Keep asking
    follow-up questions until you can name the first tools or pages that you'd build. A one-line
-   answer always gets a follow-up. Don't skip or rush this question.
+   answer always gets a follow-up. Don't skip or rush this question. If an answer leaves open
+   something that the first build depends on, such as where its data comes from, ask about it
+   now. If the person hasn't decided, put it in the brief as an open point.
 2. **Who uses it?** Only you, named people or a team, or anyone.
 3. **How do they use it?** From an AI assistant such as Claude, in a browser, or both.
 4. **If from an assistant, what do its tools need?** To act on each user's GitHub account, only
@@ -67,13 +69,17 @@ Turn the answers into the script's answers with this table:
 | A domain on Cloudflare                                               | `hostname`: a hostname on that zone, such as `tools.example.com`                                      |
 | The free address                                                     | `hostname`: `workers.dev`                                                                             |
 | What they're building                                                | `brief`, `description`: one sentence that starts with a verb, and `display-name`: up to 60 characters |
+| The person didn't say that the code is open source                   | `license`: `none`                                                                                     |
+| The code is open source                                              | `license`: ask whether `mit-0` or `mit`                                                               |
 
 The script enforces these rules, so recommend a combination that keeps them:
 
 - A private web app next to `github` or `bearer` sign-in needs a custom domain. Without a domain,
   recommend `access` sign-in for named users, or a public web app.
 - `access` sign-in and a private web app need a Zero Trust organization, which is free. Access
-  admits only the email addresses and domains that you name, never anyone.
+  admits only the email addresses and domains that you name, never anyone. An email domain
+  admits everyone with an address there. When the person names specific people, ask whether the
+  whole domain may sign in or only those people.
 - With `access` sign-in, MCP sign-in doesn't work on pull request Previews.
 - A custom hostname must be on a zone in the person's Cloudflare account.
 

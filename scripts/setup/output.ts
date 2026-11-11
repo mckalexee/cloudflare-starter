@@ -152,6 +152,9 @@ export function renderDone(ctx: Context, action: Extract<Action, { kind: "done" 
       ? "Setup is finished. Every check passed."
       : "Setup is done except for the remote steps, which fixture mode turned off:",
     ...action.skipped.map((id) => `- ${id}: ${STEPS[id].title(ctx)}`),
+    "",
+    "Brief, which finish moves into the What to build section of AGENTS.md:",
+    ctx.answers.brief ?? "(none recorded)",
   );
   const open = openTasks(ctx);
   lines.push(
@@ -191,6 +194,9 @@ export function renderDone(ctx: Context, action: Extract<Action, { kind: "done" 
   }
   lines.push(`- Renovate: ${ctx.local.answers.renovate === "done" ? "installed" : "not now"}`);
   lines.push(`- License: ${ctx.answers.license ?? "mit-0"}`);
-  lines.push("", `Next: run \`${RUN} finish\` to remove the setup files.`);
+  lines.push(
+    "",
+    `Next: run \`${RUN} finish\` to remove the setup files. Building what the brief names comes after that.`,
+  );
   return lines;
 }

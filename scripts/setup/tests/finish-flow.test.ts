@@ -84,7 +84,7 @@ function finishedProject(): { root: string; fixture: string; home: string } {
   write(
     root,
     "AGENTS.md",
-    "# acme-tools\n\n<!-- setup:begin -->\n\n> Setup isn't finished.\n\n<!-- setup:end -->\n\nHalves present: web app.\n",
+    "# acme-tools\n\n<!-- setup:begin -->\n\n> Setup isn't finished.\n\n<!-- setup:end -->\n\nHalves present: web app.\n\n## Commands\n\nRun pnpm verify.\n",
   );
   write(root, "src/web/app.ts", "// The web app.\nexport const app = 1;\n");
   write(
@@ -110,7 +110,7 @@ function finishedProject(): { root: string; fixture: string; home: string } {
   write(
     root,
     "setup.json",
-    `${JSON.stringify({ answers: { "display-name": "Acme Tools", description: "", parts: "web", "web-access": "public", hostname: "workers.dev", license: "mit-0" } }, null, 2)}\n`,
+    `${JSON.stringify({ answers: { brief: "Tracks support requests for the Acme team. First, build a tool that lists open requests and a page that shows one request.", "display-name": "Acme Tools", description: "", parts: "web", "web-access": "public", hostname: "workers.dev", license: "mit-0" } }, null, 2)}\n`,
   );
   write(root, "node_modules/.modules.yaml", "");
   git(root, "add", "--all");
@@ -242,6 +242,14 @@ describe("the finish flow", () => {
     assert.ok(!readFileSync(path.join(root, "package.json"), "utf8").includes('"cf"'));
     assert.ok(!readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8").includes("cf@"));
     assert.ok(!readFileSync(path.join(root, "AGENTS.md"), "utf8").includes("setup:begin"));
+    // The brief moves into AGENTS.md, where a coding agent reads it at the start of work.
+    const agents = readFileSync(path.join(root, "AGENTS.md"), "utf8");
+    assert.match(
+      agents,
+      /\n## What to build\n\nTracks support requests for the Acme team\. First, build a tool/,
+    );
+    assert.match(agents, /delete this section once it stops helping/);
+    assert.ok(recorder.printed.some((line) => line.startsWith("Tracks support requests")));
     assert.ok(!readFileSync(path.join(root, ".gitignore"), "utf8").includes("setup.local.json"));
     assert.equal(git(root, "log", "-1", "--format=%s").trim(), FINISH_SUBJECT);
     assert.deepEqual(

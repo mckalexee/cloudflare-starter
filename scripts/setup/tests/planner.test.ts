@@ -53,6 +53,7 @@ describe("a whole run", () => {
 });
 
 const NO_ACCOUNT_QUESTIONS = new Set([
+  "brief",
   "display-name",
   "parts",
   "sign-in",

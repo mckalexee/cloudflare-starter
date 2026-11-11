@@ -113,8 +113,40 @@ function accountUsed(ctx: Context): string | undefined {
   return undefined;
 }
 
+// The brief carries what the person is building into the finished project, so it must say
+// something, and it must stay short enough to read at the start of every session.
+const BRIEF_MIN = 40;
+const BRIEF_MAX = 800;
+
 /** Every question. The planner decides the order in which it asks them. */
 export const QUESTIONS: QuestionSpec[] = [
+  {
+    key: "brief",
+    store: "shared",
+    prompt: "What is the person building, and what are the first things to build?",
+    help: () => [
+      "Write it yourself from the interview in SETUP.md, in two to four sentences, and confirm it with the person in the playback.",
+      "Name what the project does for its users and the first tools or pages to build.",
+      "It goes into AGENTS.md when setup finishes, so the work after setup starts from it.",
+    ],
+    options: () => undefined,
+    format: `Plain text on one line, ${String(BRIEF_MIN)} to ${String(BRIEF_MAX)} characters.`,
+    parse: (value) => {
+      const text = value.trim().replaceAll(/\s+/g, " ");
+      if (text.length < BRIEF_MIN || text.length > BRIEF_MAX) {
+        return {
+          error: `Use ${String(BRIEF_MIN)} to ${String(BRIEF_MAX)} characters. Name what the project does and the first things to build.`,
+        };
+      }
+      return { value: text };
+    },
+    applies: always,
+    appliesWhen: "always",
+    needed: always,
+    suggest: () => undefined,
+    invalid: never,
+    locked: never,
+  },
   {
     key: "display-name",
     store: "shared",

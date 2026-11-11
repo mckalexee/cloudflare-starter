@@ -17,6 +17,8 @@ first things that the person asked for.
   prints `DONE`. Then build what the brief names, as
   [Build what the person asked for](#build-what-the-person-asked-for) describes. If the person
   asks for more along the way, add it to the brief.
+- **Read every run's whole output.** Don't cut it with `tail`, `head`, or a filter. The steps,
+  the summary, and the final block all matter, and a cut output loses some of them.
 - **Answer from the interview.** Never ask the person a question that the interview already
   answered. Record the answer with `node scripts/setup.ts answer` and go on.
 - **One question at a time.** Ask each question that the script prints through your structured
@@ -133,7 +135,8 @@ right? On a no, go back to the interview question that their answer changes.
 
 5. From the project folder, record what the interview settled, in this order, and skip each key
    that doesn't apply to the choices: `brief`, `display-name`, `description`, `parts`, `sign-in`,
-   `web-access`, `who-may-sign-in`, `allowed-github`, and `hostname`. For example:
+   `web-access`, `who-may-sign-in`, `allowed-github`, `hostname`, and `license` when the person
+   named one. For example:
 
    ```sh
    node scripts/setup.ts answer brief "Tracks support requests for the Acme team. First, build a tool that lists open requests."
@@ -171,8 +174,10 @@ account before that.
 The run goes in this order: the questions that need no account, the local steps through the
 install, the person's block, the summary, and then the script's own work. The person's block holds
 the logins, the questions that read the accounts, and the tasks, back to back while the person is
-at the keyboard. Each task says how many tasks are left in the block. Two tasks come at the very
-end, after the deploy. These are all the person tasks:
+at the keyboard. Each task says how many tasks are left in the block. A task that's already done
+never appears, so when the person is signed in already, no login task shows up. Only
+`mcp-client` and `renovate` come after the deploy, at the very end. Every other task, the API
+token included, is in the person's block. These are all the person tasks:
 
 | Task                        | When it applies                                                                  |
 | --------------------------- | -------------------------------------------------------------------------------- |
@@ -252,8 +257,12 @@ Setup being finished isn't the end of the request. `finish` moves the brief into
 
 1. Create a branch, such as `feat/first-tools`.
 2. Build the first tools or pages that the brief names, with the project's own rules in
-   `AGENTS.md`. For MCP tools, follow the checklists "Replace the example tools" and "Add an MCP
-   tool". For pages, follow "Add a route".
+   `AGENTS.md`. The examples go, they don't stay next to the new work:
+   - With an MCP endpoint, follow "Replace the example tools": the new tools replace
+     `example_echo_message`, `account_record_visit`, and the example `profile` scope where the
+     new tools don't need it. Then follow "Add an MCP tool" for each tool.
+   - With a web app, the first page replaces the example home page in `src/web/routes/home.tsx`.
+     Follow "Add a route" for each other page.
 3. Run `pnpm verify` until it passes, then commit and push the branch.
 4. Open a pull request with `gh pr create`. The Preview workflow deploys a Preview and comments
    its URL. Wait until the pull request's checks pass.

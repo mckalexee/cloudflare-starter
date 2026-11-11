@@ -93,7 +93,10 @@ jobs:
           if [ -s "$RUNNER_TEMP/preview.env" ]; then
             args+=(--secrets-file "$RUNNER_TEMP/preview.env")
           fi
-          pnpm exec wrangler preview "${args[@]}" > "$RUNNER_TEMP/preview.json"
+          # Wrangler prints notices before the JSON, such as "Using redirected Wrangler configuration.",
+          # so keep only the JSON object, which starts at the first line that is a lone brace.
+          pnpm exec wrangler preview "${args[@]}" > "$RUNNER_TEMP/preview.out"
+          sed -n '/^{$/,$p' "$RUNNER_TEMP/preview.out" > "$RUNNER_TEMP/preview.json"
           url=$(jq -r '.preview.urls[0] // empty' "$RUNNER_TEMP/preview.json")
           if [ -z "$url" ]; then
             echo "::error title=No Preview URL::wrangler preview succeeded but its JSON output had no .preview.urls[0]."

@@ -60,7 +60,8 @@ Previews.
 `.github/workflows/preview.yml` deploys a Worker Preview named `pr-<number>` for each pull request
 from a branch in the same repository. Its URL is
 `https://pr-<number>-<worker>.<subdomain>.workers.dev`. The workflow builds, runs
-`wrangler preview --name pr-<number> --json`, polls `/healthz` until it answers 200 with
+`wrangler preview --name pr-<number> --json`, and keeps only the JSON object from its output,
+because Wrangler prints notices before it. Then it polls `/healthz` until it answers 200 with
 `{"ok":true}`, and comments the URL on the pull request. Closing the pull request runs
 `wrangler preview delete --name pr-<number> --skip-confirmation`.
 

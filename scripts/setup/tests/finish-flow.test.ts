@@ -106,7 +106,8 @@ function finishedProject(): { root: string; fixture: string; home: string } {
   mkdirSync(path.join(root, "scripts"), { recursive: true });
   copyFileSync(PRUNE, path.join(root, "scripts", "prune.ts"));
   write(root, "scripts/setup.ts", "// The setup script.\n");
-  write(root, "scripts/setup/planner.ts", "// The planner.\n");
+  write(root, "scripts/setup/planner.ts", "// The planner, which SETUP.md describes.\n");
+  write(root, "SETUP.md", "# Set up a project from this template\n");
   write(
     root,
     "setup.json",
@@ -252,6 +253,11 @@ describe("the finish flow", () => {
     assert.ok(recorder.printed.some((line) => line.startsWith("Tracks support requests")));
     assert.ok(!readFileSync(path.join(root, ".gitignore"), "utf8").includes("setup.local.json"));
     assert.equal(git(root, "log", "-1", "--format=%s").trim(), FINISH_SUBJECT);
+    // The setup script mentions SETUP.md, but this run deletes both, so there's no notice.
+    assert.ok(
+      !recorder.printed.some((line) => line.includes("still mentions")),
+      recorder.printed.join("\n"),
+    );
     assert.deepEqual(
       recorder.calls.map((call) => [call.command, ...call.args].join(" ")),
       ["pnpm install --no-frozen-lockfile", "pnpm verify"],

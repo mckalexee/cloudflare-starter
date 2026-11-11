@@ -48,15 +48,22 @@ export function accountEnv(ctx: Context): Record<string, string> {
 
 /** Parses the JSON in a command's output, skipping a banner that some commands print first. */
 export function parseJson(text: string): unknown {
-  const start = text.search(/[[{]/);
-  if (start === -1) {
-    return undefined;
+  // Wrangler prints notices first, such as "Using redirected Wrangler configuration.", and a
+  // notice can hold a bracket, such as "[WARNING]". So the JSON starts at the first line that
+  // begins with a brace or a bracket and parses through to the end.
+  const lines = text.split("\n");
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]?.trimStart() ?? "";
+    if (!line.startsWith("{") && !line.startsWith("[")) {
+      continue;
+    }
+    try {
+      return JSON.parse(lines.slice(index).join("\n"));
+    } catch {
+      // A notice that only starts like JSON. Try the next line.
+    }
   }
-  try {
-    return JSON.parse(text.slice(start));
-  } catch {
-    return undefined;
-  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -327,11 +334,14 @@ export function liveChecks(ctx: Context): LiveCheck[] {
   const http = tools().http;
   const checks: LiveCheck[] = [];
   const healthz = http({ url: `${base}/healthz` });
-  checks.push({
-    name: "healthz",
-    ok: healthz.status === 200 && healthz.body.trim() === '{"ok":true}',
-    detail: `GET /healthz answered ${String(healthz.status)} ${healthz.body.trim().slice(0, 80)}`,
-  });
+  checks.push(
+    liveCheck(
+      "healthz",
+      healthz.status === 200 && healthz.body.trim() === '{"ok":true}',
+      `GET /healthz answered ${String(healthz.status)} ${healthz.body.trim().slice(0, 80)}`,
+      '200 with {"ok":true}',
+    ),
+  );
   const mode = signIn(ctx.answers);
   if (mode !== undefined) {
     const challenge = http({
@@ -350,11 +360,14 @@ export function liveChecks(ctx: Context): LiveCheck[] {
         : mode === "access"
           ? "cloudflare-access-protected-resource"
           : "Bearer";
-    checks.push({
-      name: "sign-in challenge",
-      ok: challenge.status === 401 && authenticate.includes(expected),
-      detail: `POST /mcp without a token answered ${String(challenge.status)} with WWW-Authenticate: ${authenticate.slice(0, 160) || "none"}. Expected 401 with ${expected}.`,
-    });
+    checks.push(
+      liveCheck(
+        "sign-in challenge",
+        challenge.status === 401 && authenticate.includes(expected),
+        `POST /mcp without a token answered ${String(challenge.status)} with WWW-Authenticate: ${authenticate.slice(0, 160) || "none"}`,
+        `401 with ${expected} in WWW-Authenticate, the challenge of ${mode === "github" ? "GitHub OAuth" : mode === "access" ? "Cloudflare Access" : "bearer mode"}`,
+      ),
+    );
     if (mode === "bearer") {
       const token = readDevVars(ctx.repo.root).get("MCP_BEARER_TOKEN") ?? "";
       const call = http({
@@ -367,23 +380,39 @@ export function liveChecks(ctx: Context): LiveCheck[] {
         },
         body: MCP_INITIALIZE,
       });
-      checks.push({
-        name: "authenticated MCP call",
-        ok: call.status === 200 && call.body.includes('"serverInfo"'),
-        detail: `POST /mcp with the token from .dev.vars answered ${String(call.status)}.`,
-      });
+      checks.push(
+        liveCheck(
+          "authenticated MCP call",
+          call.status === 200 && call.body.includes('"serverInfo"'),
+          `POST /mcp with the token from .dev.vars answered ${String(call.status)}`,
+          "200 with the server info",
+        ),
+      );
     }
   }
   if (hasWeb(ctx.answers) && webPrivate(ctx.answers)) {
     const page = http({ url: `${base}/`, headers: { accept: "text/html" } });
     const location = header(page, "location");
-    checks.push({
-      name: "web app behind Access",
-      ok: page.status === 302 && location.includes("/cdn-cgi/access/login/"),
-      detail: `GET / answered ${String(page.status)}${location === "" ? "" : ` to ${location.split("?")[0] ?? ""}`}. Expected a redirect to the Access login.`,
-    });
+    checks.push(
+      liveCheck(
+        "web app behind Access",
+        page.status === 302 && location.includes("/cdn-cgi/access/login/"),
+        `GET / answered ${String(page.status)}${location === "" ? "" : ` with a redirect to ${location.split("?")[0] ?? ""}`}`,
+        "a redirect to the Access login",
+      ),
+    );
   }
   return checks;
+}
+
+// A live check whose detail says what the script saw, and then either that it matched or what it
+// expected instead. Only a failure names the expectation.
+function liveCheck(name: string, ok: boolean, seen: string, expected: string): LiveCheck {
+  return {
+    name,
+    ok,
+    detail: ok ? `${seen}, which matches ${expected}.` : `${seen}. Expected ${expected}.`,
+  };
 }
 
 /** The real remote probes, one per field of `RemoteFacts`. */

@@ -480,6 +480,11 @@ describe("done is evidence", () => {
       );
       try {
         const checks = liveChecks(ctx);
+        // A pass says what the script saw and that it matched, never what it expected instead.
+        for (const check of checks) {
+          assert.match(check.detail, /which matches/);
+          assert.doesNotMatch(check.detail, /Expected/);
+        }
         assert.ok(
           checks.every((check) => check.ok),
           `${mode}: ${JSON.stringify(checks)}`,

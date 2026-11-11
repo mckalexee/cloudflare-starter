@@ -252,7 +252,17 @@ export function instructionsSentence(description: string | undefined): string {
   if (description === undefined || description === "") {
     return TEMPLATE_INSTRUCTIONS_SENTENCE;
   }
-  return `This server ${lowerFirst(description.replace(/[.!?]$/, ""))}.`;
+  const body = lowerFirst(description.replace(/[.!?]$/, ""));
+  // The description starts with a verb. "Tracks requests" follows "This server" as it is, and
+  // "Check stock levels", in the imperative, reads right after "This server helps you".
+  const verb = body.split(/\s/, 1)[0] ?? "";
+  return thirdPerson(verb) ? `This server ${body}.` : `This server helps you ${body}.`;
+}
+
+// Whether a verb is in the third person singular, such as "tracks" or "watches". A base form can
+// end in "s" too, such as "access", "focus", or "analysis", so those endings don't count.
+function thirdPerson(verb: string): boolean {
+  return verb.endsWith("s") && !/(ss|us|is)$/.test(verb);
 }
 
 /** Replaces the first sentence of `INSTRUCTIONS` in `src/mcp/instructions.ts`. */

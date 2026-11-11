@@ -1341,14 +1341,10 @@ function planFinish(ws: Workspace, report: Report): void {
   }
 
   const deleted = section(report, "Deleted files and directories");
-  if (isPresent(ws, SETUP)) {
+  const removesRunbook = isPresent(ws, SETUP);
+  if (removesRunbook) {
     ws.delete(SETUP);
     deleted.push(SETUP);
-    for (const file of ws.textFiles()) {
-      if (ws.read(file).includes(SETUP)) {
-        notices.push(`${file} still mentions ${SETUP}, which this run deleted.`);
-      }
-    }
   }
   for (const file of SETUP_FILES) {
     if (isPresent(ws, file)) {
@@ -1358,6 +1354,14 @@ function planFinish(ws: Workspace, report: Report): void {
   }
   ws.delete(SELF);
   deleted.push(SELF);
+  // Only the files that survive this run can point at the deleted runbook.
+  if (removesRunbook) {
+    for (const file of ws.textFiles()) {
+      if (ws.read(file).includes(SETUP)) {
+        notices.push(`${file} still mentions ${SETUP}, which this run deleted.`);
+      }
+    }
+  }
 
   const leftovers = ws.textFiles().filter((file) => ws.read(file).includes("@starter:"));
   for (const file of leftovers) {

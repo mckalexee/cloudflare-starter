@@ -26,9 +26,11 @@
 //
 // `--finish` strips the remaining marker lines and rewrites the `Halves present:` line in
 // `AGENTS.md` to name what's left. It deletes `SETUP.md` and the `README.md` line that points to
-// it, because setup ends with `--finish`. It also deletes the header sentences that explain the
-// markers, the CI job that tests this script, and the script itself. Markers can't remove text
-// that `--finish` must delete, so these steps are text edits.
+// it, because setup ends with `--finish`. It also deletes the setup script and its state files,
+// the block in `AGENTS.md` that says setup isn't finished, the `.gitignore` entry for the setup
+// state, the Cloudflare CLI dependency that only setup uses, the header sentences that explain the markers, the CI job that tests setup, and this
+// script itself. Markers can't remove text that `--finish` must delete, so these steps are text
+// edits.
 //
 // The script plans every change in memory and writes nothing when any check fails, so a stale
 // path or a missing anchor leaves the tree as it was. It runs before `pnpm install`, so it uses
@@ -83,6 +85,12 @@ type FragmentSpec = {
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const SELF = "scripts/prune.ts";
+// The setup script and its state, which `--finish` deletes with this script.
+const SETUP_FILES = ["scripts/setup.ts", "scripts/setup", "setup.json", "setup.local.json"];
+const SETUP_BLOCK_START = "<!-- setup:begin -->";
+const SETUP_BLOCK_END = "<!-- setup:end -->";
+const SETUP_IGNORE = "setup.local.json";
+const SETUP_DEPENDENCY = "cf";
 const AGENTS = "AGENTS.md";
 const SETUP = "SETUP.md";
 const README = "README.md";
@@ -593,8 +601,23 @@ const FINISH_EDITS: TextEdit[] = [
   },
   {
     file: ".github/workflows/ci.yml",
-    description: "remove the prune job",
-    apply: removePruneJob,
+    description: "remove the setup job",
+    apply: removeSetupJob,
+  },
+  {
+    file: ".gitignore",
+    description: "remove the entry for the setup state",
+    apply: removeSetupIgnore,
+  },
+  {
+    file: "package.json",
+    description: "remove the Cloudflare CLI, which only setup uses",
+    apply: removeSetupDependency,
+  },
+  {
+    file: "pnpm-workspace.yaml",
+    description: "remove the Cloudflare CLI's release age exclusion",
+    apply: (text) => text.replaceAll(/^ {2}- cf@[^\n]*\n/gm, ""),
   },
 ];
 
@@ -973,17 +996,17 @@ function removeSetupPointer(text: string): string {
   return tidySeams(lines, [index]).join("\n");
 }
 
-// Deletes the `prune` job, which runs this script, and its line in the header comment. The job
-// ends where the next job, `workflows`, starts.
-function removePruneJob(text: string): string {
+// Deletes the `setup` job, which tests the setup script and this one, and its bullet in the header
+// comment. The job ends where the next job, `workflows`, starts.
+function removeSetupJob(text: string): string {
   const lines = text.split("\n");
-  const start = lines.indexOf("  prune:");
+  const start = lines.indexOf("  setup:");
   const end = lines.indexOf("  workflows:");
   if (start === -1 || end === -1 || end < start) {
-    throw new PruneError("expected a `prune:` job followed by a `workflows:` job.");
+    throw new PruneError("expected a `setup:` job followed by a `workflows:` job.");
   }
   lines.splice(start, end - start);
-  const bullet = lines.findIndex((line) => line.startsWith("# - `prune`"));
+  const bullet = lines.findIndex((line) => line.startsWith("# - `setup`"));
   if (bullet !== -1) {
     let next = bullet + 1;
     while (lines[next]?.startsWith("#   ")) {
@@ -992,6 +1015,43 @@ function removePruneJob(text: string): string {
     lines.splice(bullet, next - bullet);
   }
   return lines.join("\n");
+}
+
+// Deletes the block that says setup isn't finished, if it's there, with its markers.
+function removeSetupBlock(text: string): string {
+  const lines = text.split("\n");
+  const start = lines.indexOf(SETUP_BLOCK_START);
+  if (start === -1) {
+    return text;
+  }
+  const end = lines.indexOf(SETUP_BLOCK_END, start);
+  if (end === -1) {
+    throw new PruneError(`${SETUP_BLOCK_START} has no ${SETUP_BLOCK_END} after it.`);
+  }
+  lines.splice(start, end - start + 1);
+  return tidySeams(lines, [start]).join("\n");
+}
+
+// Deletes the `.gitignore` entry for the setup state and the comment line above it.
+function removeSetupIgnore(text: string): string {
+  const lines = text.split("\n");
+  const index = lines.indexOf(SETUP_IGNORE);
+  if (index === -1) {
+    return text;
+  }
+  const start = (lines[index - 1] ?? "").startsWith("#") ? index - 1 : index;
+  lines.splice(start, index - start + 1);
+  return tidySeams(lines, [start]).join("\n");
+}
+
+// Deletes the `cf` development dependency, which setup runs for Cloudflare Access.
+function removeSetupDependency(text: string): string {
+  const pkg: unknown = JSON.parse(text);
+  if (!isPackageJson(pkg) || pkg.devDependencies?.[SETUP_DEPENDENCY] === undefined) {
+    return text;
+  }
+  delete pkg.devDependencies[SETUP_DEPENDENCY];
+  return `${JSON.stringify(pkg, null, 2)}\n`;
 }
 
 function readPrintWidth(): number {
@@ -1194,6 +1254,11 @@ function planFinish(ws: Workspace, report: Report): void {
       description: "list the halves that remain on the Halves present line",
       apply: (text) => rewriteHalvesLine(text, describeHalves(ws)),
     });
+    edits.push({
+      file: AGENTS,
+      description: "remove the block that says setup isn't finished",
+      apply: removeSetupBlock,
+    });
   } else {
     notices.push(`${AGENTS} doesn't exist, so no Halves present line was rewritten.`);
   }
@@ -1227,6 +1292,12 @@ function planFinish(ws: Workspace, report: Report): void {
       if (ws.read(file).includes(SETUP)) {
         notices.push(`${file} still mentions ${SETUP}, which this run deleted.`);
       }
+    }
+  }
+  for (const file of SETUP_FILES) {
+    if (isPresent(ws, file)) {
+      ws.delete(file);
+      deleted.push(file);
     }
   }
   ws.delete(SELF);
@@ -1286,7 +1357,8 @@ function usage(message?: string): never {
       ...Object.entries(VARIANTS).map(([name, spec]) => `  ${name.padEnd(9)} ${spec.summary}`),
       "",
       "--finish strips the remaining markers, rewrites the Halves present line in AGENTS.md, and",
-      "deletes SETUP.md, its pointer in README.md, the prune job, and this script.",
+      "deletes SETUP.md, its pointer in README.md, the setup script and its state, the setup block",
+      "in AGENTS.md, the setup job, and this script.",
     ].join("\n"),
   );
   process.exit(2);

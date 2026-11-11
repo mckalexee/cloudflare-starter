@@ -21,7 +21,7 @@ It serves a server-rendered web app, which Cloudflare Access can make private.
 
 <!-- @starter:end -->
 
-To create a new project from this template, give a coding agent the runbook in [SETUP.md](SETUP.md).
+To create a new project from this template, give a coding agent this prompt, and it follows the runbook in [SETUP.md](SETUP.md): "Set up a new project from the template at https://github.com/mckalexee/cloudflare-starter. Follow its SETUP.md from start to finish."
 
 ## What you get
 

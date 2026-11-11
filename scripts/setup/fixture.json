@@ -1,0 +1,39 @@
+{
+  "github": { "login": "octocat" },
+  "wrangler": {
+    "accounts": [{ "id": "0123456789abcdef0123456789abcdef", "name": "Acme" }]
+  },
+  "cf": { "accountIds": ["0123456789abcdef0123456789abcdef"] },
+  "repository": { "description": "" },
+  "workersSubdomain": "acme",
+  "zones": [{ "id": "fedcba9876543210fedcba9876543210", "name": "example.com" }],
+  "accessOrganization": {
+    "teamDomain": "acme.cloudflareaccess.com",
+    "onlyCloudflareLogin": false,
+    "hasOneTimePin": true
+  },
+  "kvNamespaces": {
+    "production": "11111111111111111111111111111111",
+    "preview": "22222222222222222222222222222222"
+  },
+  "accessApps": {
+    "allow": {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "aud": "3333333333333333333333333333333333333333333333333333333333333333",
+      "domain": "fixture.invalid",
+      "destinations": ["fixture.invalid"],
+      "include": [],
+      "managedOAuth": false
+    },
+    "bypass": null
+  },
+  "githubOAuth": { "production": true, "preview": true },
+  "apiToken": { "saved": true, "valid": true },
+  "deploy": {
+    "url": "https://github.com/example/fixture/actions/runs/1",
+    "status": "success",
+    "attempts": 1,
+    "runId": 1
+  },
+  "live": [{ "name": "healthz", "ok": true, "detail": "The fixture says /healthz answered." }]
+}

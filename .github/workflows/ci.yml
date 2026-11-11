@@ -2,9 +2,10 @@
 #
 # - `verify` runs `pnpm verify`, the definition of done: format, lint, typecheck, tests, build,
 #   and a deploy dry run.
-# - `prune` runs `scripts/prune.ts` for each project variant, verifies the result, checks it
-#   again after `--finish`, and looks for mentions of what the variant dropped, so a stale prune
-#   list fails here instead of in a new project. It runs only in the template repository.
+# - `setup` tests the setup planner, then runs `scripts/setup.ts` from a fixture for each project
+#   scenario: the local steps, `pnpm dev`, `finish`, and a search for mentions of what the
+#   scenario dropped, so a stale prune list fails here instead of in a new project. It runs only
+#   in the template repository.
 # - `workflows` lints the workflow files with actionlint.
 #
 # Needs no secrets or variables.
@@ -49,37 +50,57 @@ jobs:
       - name: Verify
         run: pnpm verify
 
-  prune:
-    name: Prune with ${{ matrix.prune }}
-    # A project created from the template is already pruned, so this job would fail there.
+  setup:
+    name: Set up ${{ matrix.name }}
+    # A project created from the template finishes setup and deletes this job, so it runs only in
+    # the template repository.
     if: github.repository == 'mckalexee/cloudflare-starter'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
-      # Report every variant, not only the first one that fails.
+      # Report every scenario, not only the first one that fails.
       fail-fast: false
       matrix:
-        # `prune` holds the script's arguments. Several runs, applied in order, are separated by
-        # `;`, as an MCP-only project in bearer mode runs `mcp-only` and then `bearer`. `leftovers`
-        # names what the result must not mention: a part (`web` or `mcp`), the Access identity
-        # check (`access`), or the OAuth sign-in (`oauth`).
+        # `answers` holds the scenario's answers as `key=value` pairs, over the shared answers in
+        # the "Run the setup loop" step. `leftovers` names what the finished project must not
+        # mention: a part (`web` or `mcp`), the Access identity check (`access`), the OAuth
+        # sign-in (`oauth`), or the setup script (`setup`).
         include:
-          - prune: mcp-only
-            leftovers: web access
-          - prune: app-only
-            leftovers: mcp
-          - prune: bearer
-            leftovers: oauth
-          - prune: mcp-only; bearer
-            leftovers: web access oauth
-          - prune: --parts mcp,web --sign-in github
-            leftovers: ""
-          - prune: --parts mcp --sign-in bearer
-            leftovers: web access oauth
-          - prune: --parts mcp --sign-in access
-            leftovers: web oauth
-          - prune: --parts mcp,web --sign-in access
-            leftovers: oauth
+          - name: MCP only with GitHub OAuth
+            answers: parts=mcp sign-in=github
+            leftovers: web access setup
+          - name: MCP only with a bearer token
+            answers: parts=mcp sign-in=bearer
+            leftovers: web access oauth setup
+          - name: MCP only with Access sign-in
+            answers: parts=mcp sign-in=access
+            leftovers: web oauth setup
+          - name: a public web app only
+            answers: parts=web web-access=public
+            leftovers: mcp setup
+          - name: a private web app only
+            answers: parts=web web-access=private
+            leftovers: mcp setup
+          - name: both parts with GitHub OAuth and a public web app
+            answers: parts=mcp,web sign-in=github web-access=public
+            leftovers: setup
+          - name: both parts with GitHub OAuth and a private web app
+            answers: parts=mcp,web sign-in=github web-access=private hostname=tools.example.com
+            leftovers: setup
+          - name: both parts with a bearer token and a public web app
+            answers: parts=mcp,web sign-in=bearer web-access=public
+            leftovers: oauth setup
+          - name: both parts with a bearer token and a private web app
+            answers: parts=mcp,web sign-in=bearer web-access=private hostname=tools.example.com
+            leftovers: oauth setup
+          - name: both parts with Access sign-in and a public web app
+            answers: parts=mcp,web sign-in=access web-access=public
+            leftovers: oauth setup
+          - name: both parts with Access sign-in and a private web app
+            answers: parts=mcp,web sign-in=access web-access=private
+            leftovers: oauth setup
+    env:
+      ANSWERS: ${{ matrix.answers }}
     steps:
       - uses: actions/checkout@v7
 
@@ -90,40 +111,132 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # The planner tests need no install, the same as the setup script.
+      - name: Test the setup planner
+        run: node --test 'scripts/setup/tests/*.test.ts'
 
-      - name: Prune
-        env:
-          PRUNE: ${{ matrix.prune }}
+      # The setup script refuses to run in the template, so the checkout poses as a new project.
+      # It runs before `pnpm install`, so nothing is installed yet. The fixture moves out of the
+      # tree, because `finish` deletes `scripts/setup/`.
+      - name: Pose as a new project
         run: |
-          IFS=';' read -ra runs <<< "$PRUNE"
-          for run in "${runs[@]}"; do
-            read -ra args <<< "$run"
-            node scripts/prune.ts "${args[@]}"
+          git config user.name "Setup CI"
+          git config user.email "setup-ci@example.com"
+          git remote set-url origin https://github.com/example/acme-tools.git
+          cp scripts/setup/fixture.json "$RUNNER_TEMP/fixture.json"
+          if [[ " $ANSWERS " == *" sign-in=github "* ]]; then
+            printf 'GITHUB_CLIENT_ID=ci-client-id\nGITHUB_CLIENT_SECRET=ci-client-secret\n' > .dev.vars
+          else
+            printf '# No secrets for this scenario.\n' > .dev.vars
+          fi
+
+      # Each run runs the due steps and ends with one action: a question, a task, a wait, or
+      # done. The loop answers questions and the two last tasks from the scenario, and fails on
+      # any other question or task, or on a wait, because the fixture covers the rest.
+      - name: Run the setup loop
+        run: |
+          export SETUP_FIXTURE="$RUNNER_TEMP/fixture.json"
+          declare -A answer=(
+            [display-name]="Acme Tools"
+            [description]="Tracks support requests for the Acme team."
+            [who-may-sign-in]="ada@example.com,example.com"
+            [hostname]="workers.dev"
+            [allowed-github]="octocat"
+            [oauth-previews]="no"
+            [license]="mit-0"
+            # The fixture's KV namespaces exist before setup records them, so the loop adopts them.
+            [existing-resources]="earlier-attempt"
+            [mcp-client]="not-now"
+            [renovate]="not-now"
+          )
+          for pair in $ANSWERS; do
+            answer[${pair%%=*}]=${pair#*=}
           done
+          for _ in $(seq 1 60); do
+            status=0
+            output=$(node scripts/setup.ts) || status=$?
+            printf '%s\n\n' "$output"
+            if [ "$status" != 0 ]; then
+              echo "::error::node scripts/setup.ts exited with code $status."
+              exit "$status"
+            fi
+            header=$(grep -E '^(QUESTION|TASK|WAIT|DONE)(:|$)' <<< "$output" | tail -n 1 || true)
+            kind=${header%%:*}
+            key=${header#*: }
+            case "$kind" in
+              DONE) exit 0 ;;
+              "") ;;
+              QUESTION | TASK)
+                if [ -z "${answer[$key]+set}" ]; then
+                  echo "::error::The script asks for $key, which this scenario doesn't answer."
+                  exit 1
+                fi
+                node scripts/setup.ts answer "$key" "${answer[$key]}"
+                ;;
+              *)
+                echo "::error::The script printed an unexpected action: $header"
+                exit 1
+                ;;
+            esac
+          done
+          echo "::error::Setup didn't reach DONE in 60 runs."
+          exit 1
 
-      # Pruning removes dependencies from package.json, so the lockfile has to change.
-      - name: Reinstall the pruned dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Verify
-        run: pnpm verify
+      # In Access mode, the dev server fakes the Access identity from `access.dev`, which setup
+      # wrote with the fixture's AUD tag, so an MCP request gets through.
+      - name: Check the dev server
+        run: |
+          port=${DEV_PORT:-5173}
+          log="$RUNNER_TEMP/dev-$port.log"
+          # Job control gives the dev server its own process group, so one kill stops pnpm and
+          # Vite.
+          set -m
+          pnpm dev --port "$port" > "$log" 2>&1 &
+          dev=$!
+          set +m
+          trap 'kill -- "-$dev" 2> /dev/null || true' EXIT
+          body=""
+          for _ in $(seq 1 90); do
+            body=$(curl -sS --max-time 5 "http://localhost:$port/healthz" 2>&1) && break
+            sleep 1
+          done
+          if [ "$body" != '{"ok":true}' ]; then
+            cat "$log"
+            echo "::error::/healthz answered $body instead of {\"ok\":true}."
+            exit 1
+          fi
+          echo "/healthz answered $body."
+          if [[ " $ANSWERS " == *" sign-in=access "* ]]; then
+            response=$(curl -sS --max-time 15 "http://localhost:$port/mcp" \
+              --request POST \
+              --header "content-type: application/json" \
+              --header "accept: application/json, text/event-stream" \
+              --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"setup-ci","version":"1.0.0"}}}' \
+              --write-out '\n%{http_code}')
+            if [ "$(tail -n 1 <<< "$response")" != 200 ] || ! grep -q '"serverInfo"' <<< "$response"; then
+              cat "$log"
+              echo "::error::POST /mcp answered $response"
+              exit 1
+            fi
+            echo "POST /mcp answered 200 with the server info."
+          fi
 
       - name: Finish the setup
-        run: node scripts/prune.ts --finish
+        env:
+          SETUP_FIXTURE: ${{ runner.temp }}/fixture.json
+        run: node scripts/setup.ts finish
 
-      # `--finish` removes only marker lines and setup files, so the tests and the build don't need
-      # to run again.
+      # `finish` already ran `pnpm verify`. These checks repeat the parts that a leftover marker or
+      # a stale reference would break.
       - name: Check the finished project
         run: pnpm fmt:check && pnpm lint && pnpm typecheck
 
-      # A variant must leave no mention of the paths and packages of what it dropped. Without
+      # A scenario must leave no mention of the paths and packages of what it dropped. Without
       # OAuth, `OAUTH_KV` stays as a binding name, and Access sign-in's docs name Managed OAuth,
       # the `oauth_configuration` field, and the `oauth-protected-resource` paths, so the `oauth`
       # pattern skips exactly those. A match means a file needs a marker or a swap in
-      # `scripts/prune.ts`.
-      - name: Check for leftovers of what the variant dropped
+      # `scripts/prune.ts`, or a text edit in its `--finish`.
+      - name: Check for leftovers of what the scenario dropped
         env:
           LEFTOVERS: ${{ matrix.leftovers }}
         run: |
@@ -143,6 +256,10 @@ jobs:
                 pattern+='|github (account|login|sign)|sign in with github|signed-in (user|caller)'
                 pattern+='|authorization code'
                 ;;
+              setup)
+                pattern='scripts/setup|setup\.(local\.)?json|setup:(begin|end)|SETUP\.md'
+                pattern+='|prune\.ts|@starter:'
+                ;;
               *)
                 echo "::error::Unknown leftover kind $leftover."
                 exit 1
@@ -152,9 +269,9 @@ jobs:
             status=0
             grep -rniIP "$pattern" . \
               --exclude-dir={.git,node_modules,build,dist,.wrangler,.react-router} \
-              --exclude={pnpm-lock.yaml,worker-configuration.d.ts} || status=$?
+              --exclude={pnpm-lock.yaml,worker-configuration.d.ts,.dev.vars} || status=$?
             if [ "$status" = 0 ]; then
-              echo "::error::The variant leaves the $leftover matches above behind."
+              echo "::error::The scenario leaves the $leftover matches above behind."
               exit 1
             elif [ "$status" != 1 ]; then
               echo "::error::grep failed on the $leftover pattern."

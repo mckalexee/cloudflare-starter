@@ -560,8 +560,8 @@ git commit -m "Remove the template setup files"
 git push origin main
 ```
 
-`--finish` removes the remaining marker comments, the CI job that tests the prune script, the
-script itself, and this file. It also rewrites the `Halves present:` line in `AGENTS.md` to match
+`--finish` removes the remaining marker comments, the CI job that tests setup, the prune and
+setup scripts, and this file. It also rewrites the `Halves present:` line in `AGENTS.md` to match
 what you kept. If it refuses because a file still mentions a marker, remove that mention and run
 it again.
 

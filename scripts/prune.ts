@@ -28,7 +28,7 @@
 // `AGENTS.md` to name what's left. It deletes `SETUP.md` and the `README.md` line that points to
 // it, because setup ends with `--finish`. It also deletes the setup script and its state files,
 // the block in `AGENTS.md` that says setup isn't finished, the `.gitignore` entry for the setup
-// state, the header sentences that explain the markers, the CI job that tests setup, and this
+// state, the Cloudflare CLI dependency that only setup uses, the header sentences that explain the markers, the CI job that tests setup, and this
 // script itself. Markers can't remove text that `--finish` must delete, so these steps are text
 // edits.
 //
@@ -90,6 +90,7 @@ const SETUP_FILES = ["scripts/setup.ts", "scripts/setup", "setup.json", "setup.l
 const SETUP_BLOCK_START = "<!-- setup:begin -->";
 const SETUP_BLOCK_END = "<!-- setup:end -->";
 const SETUP_IGNORE = "setup.local.json";
+const SETUP_DEPENDENCY = "cf";
 const AGENTS = "AGENTS.md";
 const SETUP = "SETUP.md";
 const README = "README.md";
@@ -608,6 +609,16 @@ const FINISH_EDITS: TextEdit[] = [
     description: "remove the entry for the setup state",
     apply: removeSetupIgnore,
   },
+  {
+    file: "package.json",
+    description: "remove the Cloudflare CLI, which only setup uses",
+    apply: removeSetupDependency,
+  },
+  {
+    file: "pnpm-workspace.yaml",
+    description: "remove the Cloudflare CLI's release age exclusion",
+    apply: (text) => text.replaceAll(/^ {2}- cf@[^\n]*\n/gm, ""),
+  },
 ];
 
 function isKind(name: string): name is Kind {
@@ -1031,6 +1042,16 @@ function removeSetupIgnore(text: string): string {
   const start = (lines[index - 1] ?? "").startsWith("#") ? index - 1 : index;
   lines.splice(start, index - start + 1);
   return tidySeams(lines, [start]).join("\n");
+}
+
+// Deletes the `cf` development dependency, which setup runs for Cloudflare Access.
+function removeSetupDependency(text: string): string {
+  const pkg: unknown = JSON.parse(text);
+  if (!isPackageJson(pkg) || pkg.devDependencies?.[SETUP_DEPENDENCY] === undefined) {
+    return text;
+  }
+  delete pkg.devDependencies[SETUP_DEPENDENCY];
+  return `${JSON.stringify(pkg, null, 2)}\n`;
 }
 
 function readPrintWidth(): number {

@@ -58,7 +58,7 @@ describe("finish", () => {
       console.log = (line: string) => printed.push(line);
       let code: number;
       try {
-        code = await finish(root, fixture);
+        code = finish(root, fixture, path.join(root, "scripts"));
       } finally {
         console.log = log;
       }

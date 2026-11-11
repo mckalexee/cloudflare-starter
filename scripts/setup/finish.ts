@@ -43,8 +43,30 @@ export function renderRefusal(blockers: string[]): string[] {
 export function restoreSetupFiles(root: string, localState: string | undefined): void {
   run(root, "git", ["reset", "--quiet", "--hard", "HEAD"]);
   if (localState !== undefined) {
-    writeFileSync(path.join(root, LOCAL_FILE), localState, { mode: 0o600 });
+    writeFileSync(path.join(root, LOCAL_FILE), withoutInstallCache(localState), { mode: 0o600 });
   }
+}
+
+// `finish` ran `pnpm install` without the Cloudflare CLI, so the install cache no longer matches
+// `node_modules`, and the next run must install again.
+function withoutInstallCache(state: string): string {
+  const parsed: unknown = JSON.parse(state);
+  if (typeof parsed !== "object" || parsed === null) {
+    return state;
+  }
+  const rest = Object.fromEntries(Object.entries(parsed).filter(([key]) => key !== "installedFor"));
+  return `${JSON.stringify(rest, null, 2)}\n`;
+}
+
+const LIVE_ATTEMPTS = 5;
+const ATTEMPTS_FILE = "finish-live-attempts";
+
+// Counts the runs that found a failed live check after the finish deploy, in the copy.
+function liveAttempts(copy: string, add: number): number {
+  const file = path.join(copy, "state", ATTEMPTS_FILE);
+  const count = (existsSync(file) ? Number(readFileSync(file, "utf8")) || 0 : 0) + add;
+  writeFileSync(file, String(count));
+  return count;
 }
 
 function copyScript(root: string, scriptDir: string, copy: string): void {
@@ -106,7 +128,9 @@ function revertFinish(ctx: Context, copy: string, reason: string): number {
   }
   const state = path.join(copy, "state", LOCAL_FILE);
   if (existsSync(state)) {
-    writeFileSync(path.join(root, LOCAL_FILE), readFileSync(state), { mode: 0o600 });
+    writeFileSync(path.join(root, LOCAL_FILE), withoutInstallCache(readFileSync(state, "utf8")), {
+      mode: 0o600,
+    });
   }
   rmSync(copy, { recursive: true, force: true });
   say(
@@ -118,11 +142,6 @@ function revertFinish(ctx: Context, copy: string, reason: string): number {
 /** Waits on the deploy of the finish commit and its live checks, from the copy's state. */
 export function checkDeploy(root: string, copy: string): number {
   const ctx = loadContext(root, { stateRoot: path.join(copy, "state") });
-  const subject = read(root, "git", ["log", "-1", "--format=%s"]).trim();
-  if (subject !== FINISH_SUBJECT) {
-    say("REFUSED: finish", `HEAD isn't the finish commit, so there's nothing to resume.`);
-    return 1;
-  }
   if (!ctx.facts.pushed) {
     run(root, "git", ["push", "origin", "HEAD:main"]);
     return checkDeploy(root, copy);
@@ -155,16 +174,25 @@ export function checkDeploy(root: string, copy: string): number {
   }
   const failed = (ctx.facts.live ?? []).filter((check) => !check.ok);
   if (ctx.facts.live === null || failed.length > 0) {
-    return revertFinish(
-      ctx,
-      copy,
-      `Live checks failed: ${failed.map((check) => check.detail).join(" ") || "none ran"}`,
-    );
+    const detail = failed.map((check) => check.detail).join(" ") || "none ran";
+    // A new deploy can take a minute to answer everywhere, so a failed check waits first.
+    const attempts = liveAttempts(copy, 1);
+    if (attempts < LIVE_ATTEMPTS) {
+      say(
+        "WAIT: finish",
+        `The finish commit deployed in ${deploy.url}, but a live check failed (try ${String(attempts)} of ${String(LIVE_ATTEMPTS)}): ${detail}`,
+        `Project folder: ${root}`,
+        `Next: run \`${resumeCommand(copy, root)}\` again in about a minute.`,
+      );
+      return 0;
+    }
+    return revertFinish(ctx, copy, `Live checks failed ${String(LIVE_ATTEMPTS)} times: ${detail}`);
   }
   rmSync(copy, { recursive: true, force: true });
   rmSync(path.join(root, LOCAL_FILE), { force: true });
   rmSync(ctx.repo.apiTokenFile, { force: true });
   say(
+    "",
     "DONE",
     `Setup is finished. The finish commit deployed in ${deploy.url}, and every live check passed.`,
     `The copy of the setup script and the API token file, ${ctx.repo.apiTokenFile}, are deleted. GitHub keeps the token as the CLOUDFLARE_API_TOKEN secret.`,
@@ -178,12 +206,29 @@ export function checkDeploy(root: string, copy: string): number {
 export function finish(root: string, fixtureFile: string | undefined, scriptDir: string): number {
   const copy = finishCopyDir(readOrigin(root));
   if (!existsSync(path.join(root, "scripts", "setup.ts"))) {
-    // The setup files are gone, so this is a run from the copy, resuming the wait on the deploy.
+    // The setup files are gone, so this is a run from the copy.
     if (!existsSync(path.join(copy, "state"))) {
       say("REFUSED: finish", "The setup files are gone and there's no copy to resume from.");
       return 1;
     }
-    return checkDeploy(root, copy);
+    if (read(root, "git", ["log", "-1", "--format=%s"]).trim() === FINISH_SUBJECT) {
+      return checkDeploy(root, copy);
+    }
+    // An earlier run stopped after it removed the setup files and before its commit.
+    say(
+      "FINISH",
+      "The last finish stopped before its commit, so this run puts the setup files back.",
+      "",
+    );
+    const state = path.join(copy, "state", LOCAL_FILE);
+    restoreSetupFiles(root, existsSync(state) ? readFileSync(state, "utf8") : undefined);
+    rmSync(copy, { recursive: true, force: true });
+    say(
+      "",
+      "Result: the setup files and their state are back.",
+      `Next: run \`${RUN}\` until it prints DONE, then run \`${RUN} finish\` again.`,
+    );
+    return 1;
   }
   const ctx = loadContext(root, { fixture: fixtureFile });
   const blockers = finishBlockers(ctx);
@@ -194,8 +239,16 @@ export function finish(root: string, fixtureFile: string | undefined, scriptDir:
     return 1;
   }
   say("FINISH", "Remove the setup files, verify the result, commit it, and push it.", "");
-  if (!ctx.fixture) {
+  if (ctx.fixture) {
+    say(
+      "Fixture mode doesn't copy the setup script outside the repository, push, or wait for a deploy, so an interrupted run can't resume from a copy.",
+    );
+  } else {
     copyScript(root, scriptDir, copy);
+    say(
+      `If this run stops before it prints a result, run \`${resumeCommand(copy, root)}\`. It puts the setup files back, or continues after the commit.`,
+      "",
+    );
   }
   const localFile = path.join(root, LOCAL_FILE);
   const localState = existsSync(localFile) ? readFileSync(localFile, "utf8") : undefined;
@@ -214,7 +267,9 @@ export function finish(root: string, fixtureFile: string | undefined, scriptDir:
   if (ctx.fixture) {
     say(
       "",
-      "Result: the setup files are removed and committed. Fixture mode skips the push and the deploy checks.",
+      "DONE",
+      "Setup is finished: the setup files are removed and committed. Fixture mode skipped the push and the deploy checks.",
+      "",
       "Next: nothing. Setup is finished.",
     );
     return 0;

@@ -177,11 +177,47 @@ describe("the finish flow", () => {
     ]) {
       assert.ok(existsSync(path.join(root, file)), `${file} is gone`);
     }
-    assert.equal(readFileSync(path.join(root, "setup.local.json"), "utf8"), local);
+    // The state comes back without the install cache, because `finish` installed without cf.
+    const restored: unknown = JSON.parse(readFileSync(path.join(root, "setup.local.json"), "utf8"));
+    const expected: unknown = JSON.parse(local);
+    assert.ok(typeof expected === "object" && expected !== null && "installedFor" in expected);
+    const { installedFor: _cache, ...rest } = expected;
+    assert.deepEqual(restored, rest);
     assert.match(readFileSync(path.join(root, "AGENTS.md"), "utf8"), /setup:begin/);
     assert.equal(git(root, "rev-parse", "HEAD"), head);
     assert.equal(git(root, "status", "--porcelain"), "");
     assert.ok(recorder.printed.some((line) => line.includes("Putting the setup files back.")));
+  });
+
+  test("a finish interrupted before its commit resumes from the copy and puts the files back", () => {
+    const { root, home } = finishedProject();
+    const copy = withHome(home, () => finishCopyDir({ owner: "example", name: "acme-tools" }));
+    // What the interrupted run did before it stopped: the copy, then `prune.ts --finish`.
+    write(copy, "state/setup.json", readFileSync(path.join(root, "setup.json"), "utf8"));
+    write(
+      copy,
+      "state/setup.local.json",
+      readFileSync(path.join(root, "setup.local.json"), "utf8"),
+    );
+    execFileSync(process.execPath, ["scripts/prune.ts", "--finish"], {
+      cwd: root,
+      stdio: "ignore",
+    });
+    assert.ok(!existsSync(path.join(root, "scripts", "setup.ts")));
+    const recorder = fake();
+    let code: number;
+    try {
+      code = withHome(home, () => finish(root, undefined, path.join(copy, "scripts")));
+    } finally {
+      recorder.restore();
+    }
+    assert.equal(code, 1, recorder.printed.join("\n"));
+    for (const file of ["scripts/setup.ts", "scripts/prune.ts", "setup.json", "setup.local.json"]) {
+      assert.ok(existsSync(path.join(root, file)), `${file} didn't come back`);
+    }
+    assert.ok(!readFileSync(path.join(root, "setup.local.json"), "utf8").includes("installedFor"));
+    assert.equal(git(root, "status", "--porcelain"), "");
+    assert.ok(!existsSync(copy), "the copy survived");
   });
 
   test("a passing local run removes the setup files and the setup dependency, and commits", () => {

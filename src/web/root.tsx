@@ -13,17 +13,16 @@ import {
 } from "react-router";
 
 import { requireIdentityMiddleware } from "#web/middleware.ts";
+import { isPublicPath } from "#web/public-paths.ts";
 
 import type { Route } from "./+types/root.ts";
 
-// Route patterns that anyone may see on a private site, written the way React Router reports
-// them, such as `/` or `/blog/:slug`. Every other route needs a Cloudflare Access identity, so a
-// new route stays private until you add it here.
-const PUBLIC_PATHS = new Set(["/"]);
-
-/** Runs the identity gate for every route that isn't in the public list. */
+/**
+ * Runs the identity gate for every route outside `PUBLIC_PATHS` in `src/web/public-paths.ts`. A
+ * new route stays private until you list it there.
+ */
 export const middleware: Route.MiddlewareFunction[] = [
-  (args, next) => (PUBLIC_PATHS.has(args.pattern) ? next() : requireIdentityMiddleware(args, next)),
+  (args, next) => (isPublicPath(args.pattern) ? next() : requireIdentityMiddleware(args, next)),
 ];
 
 /** Document shell shared by every route, including error boundaries. */

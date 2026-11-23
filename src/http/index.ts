@@ -57,8 +57,25 @@ export function createApp() {
       // HSTS belongs in the zone's SSL/TLS settings. With `includeSubDomains`, a value sent from
       // this Worker would also bind every other host on the domain.
       strictTransportSecurity: false,
+      // @starter:web
+      // The middleware after this one sets `Referrer-Policy`, because Hono's would overwrite the
+      // value that a handler chose.
+      referrerPolicy: false,
+      // @starter:end
     }),
   );
+  // @starter:web
+  // Hono's default `Referrer-Policy`, `no-referrer`, makes a browser send `Origin: null` on a plain
+  // HTML form post, and React Router answers 400 to a document POST with that origin. With
+  // `same-origin`, a same-origin post keeps its real `Origin`, and no other origin gets a referrer.
+  // A response that sets its own policy keeps it.
+  app.use(async (c, next) => {
+    await next();
+    if (!c.res.headers.has("Referrer-Policy")) {
+      c.res.headers.set("Referrer-Policy", "same-origin");
+    }
+  });
+  // @starter:end
   app.onError(handleError);
 
   app.route("/", healthRoutes);

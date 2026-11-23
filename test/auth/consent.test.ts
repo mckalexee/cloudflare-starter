@@ -41,6 +41,13 @@ describe("GET /authorize", () => {
     expect(response.headers.get("Set-Cookie")).toMatch(/^__Host-oauth-consent/);
   });
 
+  it("sends Referrer-Policy: no-referrer, because its URL carries OAuth parameters", async () => {
+    const { response } = await openConsent();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
+
   it("renders a 400 page for an unknown client instead of redirecting", async () => {
     const params = new URLSearchParams({
       response_type: "code",

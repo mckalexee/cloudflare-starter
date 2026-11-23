@@ -1,5 +1,5 @@
 // Tests for the account page and the identity gate that the root route applies to every route
-// outside its public list.
+// outside the public list in `src/web/public-paths.ts`.
 import { exports } from "cloudflare:workers";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -74,11 +74,11 @@ describe("GET /account", () => {
 });
 
 describe("GET / on a private site", () => {
-  it("renders without an identity, because the home page is public", async () => {
+  it("returns 403 without an identity, because the public list ships empty", async () => {
     usePrivateSite();
 
     const response = await exports.default.fetch("http://example.com/");
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(403);
   });
 });

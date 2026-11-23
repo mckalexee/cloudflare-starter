@@ -3,8 +3,8 @@
 The web app is a React Router 8 app in framework mode, rendered on the server inside the Worker.
 Hono sits in front of it: Hono serves the plain HTTP routes and hands every other request to
 React Router. This page covers how a request reaches a route, how identity and bindings reach
-loaders, how to keep a site public or make it private with Cloudflare Access, and how to add a
-route or Tailwind.
+loaders, how to keep a site public or make it private with Cloudflare Access, how forms post,
+and how to add a route or Tailwind.
 
 ## How a request reaches a route
 
@@ -31,8 +31,8 @@ copy or change the port.
 ## Identity in loaders
 
 The root route, `src/web/root.tsx`, exports a middleware that runs for every route. For any
-route whose pattern isn't in `PUBLIC_PATHS`, it runs `requireIdentityMiddleware` from
-`src/web/middleware.ts`, which:
+route whose pattern isn't in `PUBLIC_PATHS` in `src/web/public-paths.ts`, it runs
+`requireIdentityMiddleware` from `src/web/middleware.ts`, which:
 
 1. Resolves the identity through `identityResolverContext`.
 2. Stores it in `identityContext`.
@@ -64,10 +64,18 @@ private site without one.
 
 ### The public list
 
-`PUBLIC_PATHS` in `src/web/root.tsx` lists the route patterns that anyone may see on a private
-site, written the way React Router reports them, such as `/` or `/blog/:slug`. Every other route
-needs an identity, so a new route stays private until you add it to the list. The template lists
-only `/`.
+`PUBLIC_PATHS` in `src/web/public-paths.ts` lists the route patterns that anyone may see on a
+private site. Every other route needs an identity, so a new route stays private until you add it
+to the list. The list ships empty, so every page of a private site starts private, the home page
+included. A page that replaces the home page stays private too, until you list `/`.
+
+Write an entry as the path from `src/web/routes.ts`, with or without a leading slash: `/blog/:slug`
+and `blog/:slug` both match `route("blog/:slug", ...)`, whose pattern React Router reports as
+`blog/:slug`. The index route's pattern is `/`.
+
+In production, the Access application covers the whole hostname, so Access asks for a login
+before the Worker sees a request, even for a listed page. The list matters where the Worker's
+check is the only gate, such as on a Preview or on a hostname that Access doesn't cover.
 
 ### Where the identity comes from
 
@@ -93,11 +101,11 @@ routes reject it. To accept service tokens, build an identity from the `common_n
 
 Whether the site is private is configuration, not code. The `WEB_ACCESS` var decides it:
 
-| `WEB_ACCESS`  | Result                                                                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `public`      | Public site. Every route renders without requiring an identity. A route still sees the identity when Access forwards one.                  |
-| `private`     | Private site. Routes outside `PUBLIC_PATHS` and `/api/me` need a valid Access JWT. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` must both be set. |
-| Anything else | Configuration error. Requests that check identity fail with a 500 response, so the site fails closed.                                      |
+| `WEB_ACCESS`  | Result                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public`      | Public site. Every route renders without requiring an identity. A route still sees the identity when Access forwards one.                                           |
+| `private`     | Private site. `/api/me` and every route outside `PUBLIC_PATHS`, which ships empty, need a valid Access JWT. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` must both be set. |
+| Anything else | Configuration error. Requests that check identity fail with a 500 response, so the site fails closed.                                                               |
 
 `private` with an empty Access var is a configuration error too.
 
@@ -150,13 +158,24 @@ cache write.
    ```
 
 3. Run `pnpm typegen` to generate `./+types/reports.ts`, which the module imports for its types.
-4. On a private site, decide whether the page is public. If it is, add its pattern to
-   `PUBLIC_PATHS`.
+4. On a private site, the page is private unless you add its pattern to `PUBLIC_PATHS` in
+   `src/web/public-paths.ts`. That holds for a page that replaces the home page, too.
 5. Add a test in `test/web/` that renders the route through `exports.default.fetch`, as
    `test/web/account.test.ts` does.
 
 A route that throws `data({ message }, { status })` gets that message on the error page from the
 root `ErrorBoundary`. Any other error renders a generic message.
+
+## Forms
+
+The web app's pages send `Referrer-Policy: same-origin`, which `src/http/index.ts` sets in place
+of Hono's default, `no-referrer`. With `no-referrer`, a browser sends `Origin: null` on a plain
+HTML form post, and React Router answers 400 to a document POST whose origin doesn't match the
+request, as a possible cross-site request forgery. With `same-origin`, a same-origin form post
+keeps its real `Origin`, and the browser still sends no referrer to another origin.
+
+Because of that policy, a route `action` works for a plain `<form method="post">`, without
+JavaScript or before the page hydrates. A response that sets its own `Referrer-Policy` keeps it.
 
 ## Errors and logging
 

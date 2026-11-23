@@ -424,7 +424,7 @@ Pick the layout that fits the web app:
   "name": "<name>",
   "domain": "<host>",
   "destinations": [{ "type": "public", "uri": "<host>" }],
-  "session_duration": "24h",
+  "session_duration": "720h",
   "oauth_configuration": {
     "enabled": true,
     "dynamic_client_registration": {
@@ -436,7 +436,7 @@ Pick the layout that fits the web app:
         "https://claude.com/api/mcp/auth_callback"
       ]
     },
-    "grant": { "access_token_lifetime": "15m", "session_duration": "24h" }
+    "grant": { "access_token_lifetime": "15m", "session_duration": "87600h" }
   },
   "policies": [
     {
@@ -467,7 +467,13 @@ These Managed OAuth settings are the ones that work with Claude Code and claude.
 - `allow_any_on_localhost` and `allow_any_on_loopback` admit the redirect URIs of clients that run
   on your computer, such as Claude Code.
 - `allowed_uris` admits the claude.ai and claude.com callbacks for the connectors.
-- Access tokens last 15 minutes, and a sign-in lasts 24 hours.
+- Access tokens last 15 minutes. The client renews them in the background, and Access checks its
+  policy again each time, so a person that you remove from the policy loses the connection
+  within 15 minutes.
+- The grant's `session_duration` is 10 years, written as `87600h`. It's how long a client stays
+  connected after one sign-in. Keep it long: an agent's connection can't sign in again without a
+  person. The application's own `session_duration` of 30 days, written as `720h`, applies to
+  sign-ins in a browser. Access allows at most one month there.
 
 `bypass-app.json` for the host layout:
 

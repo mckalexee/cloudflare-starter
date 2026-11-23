@@ -10,7 +10,7 @@ import { describe, test } from "node:test";
 
 import { StepError } from "../exec.ts";
 import { loadContext, RefusalError } from "../probes.ts";
-import { REMOTE_STEPS } from "../remote-steps.ts";
+import { accessAppPayload, REMOTE_STEPS } from "../remote-steps.ts";
 import {
   accessAppFact,
   githubPairAccepted,
@@ -672,5 +672,27 @@ describe("probes", () => {
       }
     }
     assert.ok(readFileSync(path.join(root, ".env"), "utf8").includes("OTHER"));
+  });
+});
+
+describe("the Access application payload", () => {
+  const app = {
+    name: "acme-tools",
+    domain: "acme-tools.acme.workers.dev",
+    destinations: ["acme-tools.acme.workers.dev"],
+    include: ["email:ada@example.com"],
+    managedOAuth: true,
+  };
+
+  test("keeps an MCP client connected for 10 years after one sign-in", () => {
+    const payload = JSON.stringify(accessAppPayload(app));
+    assert.match(payload, /"grant":\{"access_token_lifetime":"15m","session_duration":"87600h"\}/);
+    // The application's own session, for sign-ins in a browser, lasts 30 days.
+    assert.match(payload, /"domain":"[^"]+","destinations":\[[^\]]+\],"session_duration":"720h"/);
+  });
+
+  test("has no Managed OAuth settings for a web app alone", () => {
+    const payload = accessAppPayload({ ...app, managedOAuth: false });
+    assert.equal("oauth_configuration" in payload, false);
   });
 });

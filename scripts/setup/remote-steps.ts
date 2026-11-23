@@ -93,6 +93,15 @@ function cookieSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+// How long an MCP client stays connected after one sign-in: 10 years, in hours, because Access
+// takes no larger unit. An agent's connection can't sign in again without a person. Access
+// checks its policy again at every token refresh, so removing someone from the policy still
+// ends their connection within one access token lifetime.
+const GRANT_SESSION_DURATION = "87600h";
+
+// How long a sign-in in a browser lasts: 30 days. Access allows at most one month.
+const BROWSER_SESSION_DURATION = "720h";
+
 /** The JSON body of an Access application, in the shape that `docs/auth.md` shows. */
 export function accessAppPayload(app: DesiredAccessApp): Record<string, unknown> {
   const bypass = app.include.includes("everyone");
@@ -108,7 +117,7 @@ export function accessAppPayload(app: DesiredAccessApp): Record<string, unknown>
     name: app.name,
     domain: app.domain,
     destinations: app.destinations.map((uri) => ({ type: "public", uri })),
-    ...(bypass ? {} : { session_duration: "24h" }),
+    ...(bypass ? {} : { session_duration: BROWSER_SESSION_DURATION }),
     ...(app.managedOAuth
       ? {
           oauth_configuration: {
@@ -122,7 +131,7 @@ export function accessAppPayload(app: DesiredAccessApp): Record<string, unknown>
                 "https://claude.com/api/mcp/auth_callback",
               ],
             },
-            grant: { access_token_lifetime: "15m", session_duration: "24h" },
+            grant: { access_token_lifetime: "15m", session_duration: GRANT_SESSION_DURATION },
           },
         }
       : {}),

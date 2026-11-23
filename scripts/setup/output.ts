@@ -25,7 +25,9 @@ export function renderQuestion(
   const spec = question(action.key);
   const lines = [`QUESTION: ${action.key}`];
   lines.push(
-    "Ask the person this question, and nothing else in the same message. If you have a structured question tool, use it.",
+    spec.decides === "person"
+      ? "The person answers this one. If they already answered it in their own words, record that answer. Otherwise ask them this question, and nothing else in the same message. Use your structured question tool if you have one, put everything that they need into the question, and lead with the suggested answer."
+      : "You answer this one. Decide it from the interview and record it. Don't ask the person, unless a line of this block names a case where they choose. If they already said what they want here, record that.",
     "",
   );
   if (action.problem !== undefined) {
@@ -81,7 +83,7 @@ export function renderTask(ctx: Context, action: Extract<Action, { kind: "task" 
   } else {
     const values = spec.answerKey === "mcp-client" ? "done|not-now|failed" : "done|not-now";
     lines.push(
-      `Next: record the person's answer with \`${RUN} answer ${spec.answerKey} <${values}>\`, then run \`${RUN}\` again. Not now is an accepted answer.`,
+      `Next: record the person's answer with \`${RUN} answer ${spec.answerKey} <${values}>\`, then run \`${RUN}\` again. Not now is an accepted answer, and only the person gives it. Never record an answer for this task on your own.`,
     );
   }
   return lines;

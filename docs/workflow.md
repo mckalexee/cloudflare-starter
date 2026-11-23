@@ -34,20 +34,56 @@ the plan or the diff again from the start, as someone who hasn't seen your reaso
 
 ## 1. Investigate
 
-Investigate until you're 95% sure that the person would read your description of the result and
-say "yes, that's it".
+Investigate until you're 95% sure that the person would read your description of what the result
+does for its users and say "yes, that's it".
 
-- **Sort each open question into fact or intent.** A fact is something that the code, the
-  installed packages, the documentation, a command, or the accounts can tell you. Research facts
-  yourself, and never ask the person for one. Intent is what the person wants and prefers. Ask
-  the person about intent, and never guess it.
-- **Ask one question at a time.** Use your structured question tool when you have one. Offer
-  options, and mark the one that you recommend and why. Without such a tool, ask the one question
-  in a message and wait for the answer. Never bury a question in a status update.
-- **Test whether you're done.** Write the playback from [Play back](#4-play-back). Every sentence
-  that you had to guess is a question that you haven't asked yet.
-- **Write down what you learn.** Put the goal, each decision, and each open point in the plan
-  file as you go. A session that's compacted or restarted then loses nothing.
+**Sort each open point into one of three kinds.** Each kind has one owner.
+
+| Kind        | What it is                                                                                         | Who settles it                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Fact        | What the code, the installed packages, the documentation, a command, or the accounts can tell      | You research it. Never ask the person for a fact.                                 |
+| Product     | What a user sees or can do, who gets in, and what needs a new paid service or work from the person | The person decides. Ask, and never guess.                                         |
+| Engineering | Everything else: storage, structure, libraries, and the names in the code                          | You decide, and write the reason in the plan. Never ask the person to choose one. |
+
+An engineering choice stays yours even when no option is clearly best. A resource in an account
+that the project already uses, such as a KV namespace or a D1 database, is engineering.
+
+**Cover the product ground.** A request names the main thing and leaves the rest open. For what
+you're about to build, find out:
+
+- What each kind of user can do, and where they see it.
+- Who can open or see what: each page, each record, and each link.
+- What happens afterward: what can be changed, undone, or removed, and by whom.
+- What the project sends to people, such as email: when, from whom, and where a reply goes.
+- What happens in the cases that the request didn't mention: nothing is there yet, the input is
+  wrong, someone tries twice, or someone drops out.
+- How it looks, when it has pages.
+- What stays out.
+
+**Ask well.**
+
+- Ask one question at a time. Use your structured question tool when you have one. Without such
+  a tool, ask the one question in a message and wait for the answer. Never bury a question in a
+  status update.
+- Ground each question in what you found, and put everything that the person needs into the
+  question itself. Some harnesses don't show the text that you write before a question.
+- Offer options, and lead with the one that you recommend and why, so that one word can answer.
+
+**Don't ask to ask.** Ask a product question when you can picture the person choosing either
+way and caring which. When any reasonable person would accept your choice and it's cheap to
+change later, such as a length limit, make the choice and list it under **Defaults** in the plan.
+The person sees that list in the playback, before you build. Never ask a question whose every
+answer leads to the same product.
+
+**Test whether you're done.** Draft the playback from [Play back](#4-play-back). Each line about
+what a user sees or can do must come from the request, from an answer, or from the defaults
+list. A line that comes from none of them is a question that you haven't asked yet. You're done
+when no question is left whose answer the person would care about.
+
+**Write down what you learn.** Put the goal, each decision, each default, and each open point in
+the plan file as you go. A session that's compacted or restarted then loses nothing. An open
+point is a product question that you asked and the person chose to leave open. It's never a
+question that you didn't ask. Settle it with the person before the task that depends on it.
 
 ## 2. Plan
 
@@ -59,9 +95,11 @@ The plan holds:
 
 - **Goal.** What the person gets, in two or three sentences.
 - **Decided with the person.** Each choice that the person made, in their words where you can.
+- **Defaults.** Each small product choice that you made yourself, one line each.
 - **Out of scope.** What you won't build, so that nobody adds it later.
-- **Approach.** How the change works and which files it touches. Verify each claim about the
-  code or a library against the version that this project uses.
+- **Approach.** How the change works, which files it touches, and each engineering choice with
+  its reason. Verify each claim about the code or a library against the version that this
+  project uses.
 - **Tasks.** Units that one subagent can finish without a decision from you. Write each task as
   the brief that you'll hand to a subagent in [Implement](#5-implement): its goal, its files, the
   check that proves it, and what's out of scope. Say which tasks must run one after another.
@@ -81,30 +119,32 @@ asked for. So the reviewers find, and the main thread decides.
   - **Does it work here?** Each step, against this code and the installed versions.
   - **Who can see or change what?** Sign-in, per-user data, secrets, and what a Preview does to
     production data.
-  - **Is it the right size?** What the goal needs that the plan lacks, and what the plan has
-    that the goal doesn't need.
+  - **Is it the right size?** What the goal or a decision requires that the plan doesn't
+    deliver, and what the plan has that neither requires.
 - Ask for findings with evidence: a file and line, the output of a command, or a link to
   documentation, plus what breaks. Reviewers report. They don't rewrite the plan.
 - Tell each reviewer what's fixed: the list of what the person decided isn't open for review,
-  and a missing feature isn't a finding.
+  and an addition that no decision names isn't a finding.
 
 <!-- @starter:web -->
 
-For a plan that adds or changes a page, the second lens includes this question: on a private
-site, which pages can someone open without signing in, in production and on a Preview?
+For a plan that adds or changes a page, the second lens includes this question: who can open
+each page, signed in and signed out, in production and on a Preview, and is that what the person
+decided?
 
 <!-- @starter:end -->
 
 **Decide on each finding.** Check the evidence yourself: open the file, run the command, read
 the page. Then choose one of three outcomes.
 
-| The finding                                              | What you do                                        |
-| -------------------------------------------------------- | -------------------------------------------------- |
-| Holds, and the result would be wrong, unsafe, or lacking | Change the plan.                                   |
-| Doesn't hold, or is a preference                         | Drop it, and note the reason in one line.          |
-| Touches what the person decided, or changes what's built | Ask the person. Don't change the plan on your own. |
+| The finding                                                            | What you do                                        |
+| ---------------------------------------------------------------------- | -------------------------------------------------- |
+| Holds, and the result would be wrong, unsafe, or lacking               | Change the plan.                                   |
+| Doesn't hold, or is a preference                                       | Drop it, and note the reason in one line.          |
+| Touches what the person decided, or changes what a user sees or can do | Ask the person. Don't change the plan on your own. |
 
 - A finding isn't true because a reviewer said it, or because two reviewers said it.
+- A fix that changes only engineering is yours to decide. Don't take it to the person.
 - Run one round. Run a second round only when the approach changed, and only on the part that
   changed. Repeated reviews make a plan longer, not better.
 - Record the outcome in the plan file: the findings that you accepted and the ones that you
@@ -114,9 +154,14 @@ the page. Then choose one of three outcomes.
 
 Before you implement, tell the person in a few plain sentences:
 
-- What you'll build.
-- The choices in the plan that affect them, and why you made each one.
+- What they get.
+- The decisions that they made, as you recorded them.
+- The defaults that you chose, one line each, so that they can change any of them.
 - What you're leaving out.
+
+Each line about what a user sees or can do comes from the request, from an answer, or from the
+defaults list. Name what your engineering choices create, such as a database, as your own
+choice. Don't ask the person to choose among engineering options.
 
 Then ask one question: is this right? On a yes, implement. On a no, go back to the phase that
 the answer changes, and play the plan back again when it's ready. Keep the technical detail in

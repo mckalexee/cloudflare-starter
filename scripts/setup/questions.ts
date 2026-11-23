@@ -29,6 +29,11 @@ export type Suggestion = { value: string; reason: string };
 /** Everything the script knows about one question. */
 export type QuestionSpec = {
   key: QuestionKey;
+  /**
+   * Who answers. The person answers questions about what users see or can do and who gets in.
+   * The agent answers questions of engineering and wording from the interview.
+   */
+  decides: "person" | "agent";
   /** `local` answers go to `setup.local.json`, because they mustn't be committed. */
   store: "shared" | "local";
   prompt: string;
@@ -125,6 +130,7 @@ const BRIEF_MAX = 800;
 export const QUESTIONS: QuestionSpec[] = [
   {
     key: "brief",
+    decides: "agent",
     store: "shared",
     prompt: "What is the person building, and what are the first things to build?",
     help: () => [
@@ -152,6 +158,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "display-name",
+    decides: "person",
     store: "shared",
     prompt: "What name should people see for the project?",
     help: () => ["It becomes APP_NAME and replaces the template's display name in the docs."],
@@ -176,6 +183,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "description",
+    decides: "agent",
     store: "shared",
     prompt: "In one sentence, what does the project do?",
     help: (ctx) => [
@@ -215,6 +223,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "parts",
+    decides: "agent",
     store: "shared",
     prompt: "Which parts should the project keep?",
     help: noHelp,
@@ -238,6 +247,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "sign-in",
+    decides: "person",
     store: "shared",
     prompt: "How should MCP clients sign in?",
     help: noHelp,
@@ -271,9 +281,13 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "web-access",
+    decides: "person",
     store: "shared",
     prompt: "Who can open the web app?",
-    help: noHelp,
+    help: () => [
+      "Answer private when at least one page needs a sign-in. On a private site, the first build",
+      "opens the pages that the person said anyone may see.",
+    ],
     options: () => [
       { value: "public", label: "Everyone. The web app is public." },
       { value: "private", label: "Only the people you name. Cloudflare Access protects it." },
@@ -292,6 +306,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "who-may-sign-in",
+    decides: "person",
     store: "local",
     prompt: "Who may sign in through Cloudflare Access?",
     help: () => [
@@ -340,9 +355,11 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "database",
+    decides: "agent",
     store: "shared",
     prompt: "Should the project have a D1 database?",
     help: () => [
+      "Decide it from what the project keeps.",
       "D1 is a SQL database. Setup creates one for production and one that every Preview shares,",
       "and the workflows apply the migrations in migrations/ to each of them.",
     ],
@@ -369,6 +386,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "cloudflare-account",
+    decides: "person",
     store: "shared",
     prompt: "Which Cloudflare account should the project use?",
     help: noHelp,
@@ -402,6 +420,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "workers-subdomain",
+    decides: "person",
     store: "shared",
     prompt: "Which workers.dev subdomain should the account get?",
     help: (ctx) => [
@@ -433,6 +452,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "hostname",
+    decides: "person",
     store: "shared",
     prompt: "Which hostname should serve production?",
     help: (ctx) =>
@@ -500,6 +520,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "allowed-github",
+    decides: "person",
     store: "shared",
     prompt: "Which GitHub accounts may sign in to the MCP endpoint?",
     help: () => ["List GitHub logins or numeric user IDs, separated by commas, or * for everyone."],
@@ -528,6 +549,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "oauth-previews",
+    decides: "person",
     store: "shared",
     prompt: "Should pull request Previews support MCP sign-in?",
     help: () => [
@@ -549,9 +571,13 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "license",
+    decides: "agent",
     store: "shared",
     prompt: "Which license should the project use?",
-    help: () => ["The template uses MIT No Attribution (MIT-0)."],
+    help: () => [
+      "Record none unless the person said that the code is open source.",
+      "If they said so and named no license, the person chooses: ask them whether they want mit-0 or mit.",
+    ],
     options: () => [
       { value: "mit-0", label: "Keep MIT No Attribution (MIT-0)." },
       { value: "mit", label: "The MIT License, with the GitHub owner as the copyright holder." },
@@ -562,12 +588,16 @@ export const QUESTIONS: QuestionSpec[] = [
     applies: always,
     appliesWhen: "always",
     needed: always,
-    suggest: () => ({ value: "mit-0", reason: "It's the template's license." }),
+    suggest: () => ({
+      value: "none",
+      reason: "The repository is private, and nothing says that the code is open source.",
+    }),
     invalid: never,
     locked: never,
   },
   {
     key: "access-otp",
+    decides: "person",
     store: "shared",
     prompt: "Should people sign in with a one-time PIN sent to their email?",
     help: () => [
@@ -596,6 +626,7 @@ export const QUESTIONS: QuestionSpec[] = [
   },
   {
     key: "existing-resources",
+    decides: "person",
     store: "local",
     prompt:
       "The Cloudflare account already has resources with this project's name. Are they from an earlier attempt at this setup?",

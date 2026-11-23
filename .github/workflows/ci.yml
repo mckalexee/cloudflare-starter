@@ -235,8 +235,9 @@ jobs:
       # A scenario must leave no mention of the paths and packages of what it dropped. Without
       # OAuth, `OAUTH_KV` stays as a binding name, and Access sign-in's docs name Managed OAuth,
       # the `oauth_configuration` field, and the `oauth-protected-resource` paths, so the `oauth`
-      # pattern skips exactly those. A match means a file needs a marker or a swap in
-      # `scripts/prune.ts`, or a text edit in its `--finish`.
+      # pattern skips exactly those. Every project ignores `.playwright-mcp/`, which a browser tool
+      # writes, so the `mcp` pattern skips that name. A match means a file needs a marker or a swap
+      # in `scripts/prune.ts`, or a text edit in its `--finish`.
       - name: Check for leftovers of what the scenario dropped
         env:
           LEFTOVERS: ${{ matrix.leftovers }}
@@ -244,7 +245,7 @@ jobs:
           for leftover in $LEFTOVERS; do
             case "$leftover" in
               web) pattern='(^|[^.])react|src/web|#web/|WEB_ACCESS|web app\b' ;;
-              mcp) pattern='mcp|modelcontextprotocol|oauth|src/auth|#auth/' ;;
+              mcp) pattern='(?<!playwright-)mcp|modelcontextprotocol|oauth|src/auth|#auth/' ;;
               access)
                 pattern='src/http/access|#http/access|auth/access\.ts|helpers/access'
                 pattern+='|ACCESS_TEAM_DOMAIN|ACCESS_AUD|access\.dev|cf-access-jwt'

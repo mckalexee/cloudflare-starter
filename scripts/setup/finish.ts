@@ -31,7 +31,7 @@ function buildNext(brief: string | undefined): string[] {
     "Brief, now in the What to build section of AGENTS.md:",
     brief ?? "(none recorded)",
     "",
-    "Next: build the first things that the brief names, with the checklists in AGENTS.md and pnpm verify, on a branch with a pull request, so the Preview shows the result before it reaches production.",
+    "Next: build what the brief names, the way that the How to work section of AGENTS.md describes. Investigate from the brief and .plans/first-build.md, write a plan and have it reviewed, play it back to the person, then implement it on a branch with a pull request. docs/workflow.md has the detail for each phase.",
   ];
 }
 

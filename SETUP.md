@@ -20,15 +20,19 @@ first things that the person asked for.
 - **Read every run's whole output.** Don't cut it with `tail`, `head`, or a filter. The steps,
   the summary, and the final block all matter, and a cut output loses some of them.
 - **Answer from the interview.** Never ask the person a question that the interview already
-  answered. Record the answer with `node scripts/setup.ts answer` and go on.
+  answered. Record the answer with `node scripts/setup.ts answer` and go on. An answer counts
+  only when the person gave it. What you infer from their other answers is a recommendation, so
+  offer it and let them choose. This matters most for how people sign in.
 - **One question at a time.** Ask each question that the script prints through your structured
   question tool when you have one, such as `AskUserQuestion` in Claude Code. Offer the script's
   options and mark its suggested answer. Without such a tool, ask the one question in a message
   and wait for the answer. Never ask two questions at once. When a question has no suggested
   answer and the person's request doesn't answer it, ask the person. Never invent an answer.
-- **Look it up before you ask.** Never ask the person for something that the script, a command,
-  or the accounts can tell you. The script already reads the accounts, the zones, the
-  `workers.dev` subdomain, and the logins.
+- **Look it up before you ask.** Sort each open question into fact or intent. A fact is
+  something that the script, a command, the template's code and docs, or the accounts can tell
+  you, so research it yourself and never ask the person for it. The script already reads the
+  accounts, the zones, the `workers.dev` subdomain, and the logins. Intent is what the person
+  wants and prefers, so ask them, and never guess it.
 - **Person tasks one at a time.** Relay each task's instruction and link as the script prints
   them, wait until the person says it's done, then run the script again. The script checks the
   result itself.
@@ -47,15 +51,29 @@ through your question tool. Ask in the person's terms, never in the template's, 
 or "sign-in mode".
 
 1. **What are you building, and what should it do for the people who use it?** Keep asking
-   follow-up questions until you can name the first tools or pages that you'd build. A one-line
-   answer always gets a follow-up. Don't skip or rush this question. If an answer leaves open
-   something that the first build depends on, such as where its data comes from, ask about it
-   now. If the person hasn't decided, put it in the brief as an open point.
+   follow-up questions until you can name the first tools or pages that you'd build, and until
+   you're 95% sure that the person would read your description of the result and say "yes,
+   that's it". To test that, draft the [playback](#playback): every sentence that you had to
+   guess is a question that you haven't asked yet. A one-line answer always gets a follow-up.
+   Don't skip or rush this question. If an answer leaves open something that the first build
+   depends on, such as where its data comes from, ask about it now. If the person hasn't
+   decided, put it in the brief as an open point.
 2. **Who uses it?** Only you, named people or a team, or anyone.
 3. **How do they use it?** From an AI assistant such as Claude, in a browser, or both.
-4. **If from an assistant, what do its tools need?** To act on each user's GitHub account, only
-   to know who the user is, or to serve a single client of your own, such as one script.
-5. **Where does it run?** On a domain that's on Cloudflare, or on the free `workers.dev` address.
+4. **If from an assistant, how do people sign in?** Always ask this question, even when the
+   other answers seem to settle it. Never choose for the person, and never assume GitHub. Offer
+   these three ways, and recommend the first unless one of the notes applies:
+   - **With their email address, through Cloudflare Access.** It admits only the people or the
+     email domains that the person names. It needs no app registration and no secrets.
+   - **With their GitHub account.** Recommend it only when the tools must act on each user's
+     GitHub account, or when anyone at all may use the project, because Access can't admit
+     everyone. It needs a GitHub OAuth app, which the person registers during setup.
+   - **With one shared token.** Recommend it only for a single client of the person's own, such
+     as one script.
+5. **If in a browser, who may open the web app?** Anyone, or only the people that the person
+   names. Ask it, even when question 2 seems to answer it, because a project can have a public
+   web app next to tools that need a sign-in.
+6. **Where does it run?** On a domain that's on Cloudflare, or on the free `workers.dev` address.
 
 When the person has no preference on a technical choice, such as where data is kept, recommend
 what the project already has: KV storage, which setup creates when the project has an MCP
@@ -64,20 +82,19 @@ unless the person asked for it.
 
 Turn the answers into the script's answers with this table:
 
-| From the interview                                                   | Script answers                                                                                        |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| An assistant only, a browser only, or both                           | `parts`: `mcp`, `web`, or `mcp,web`                                                                   |
-| The tools act on each user's GitHub account                          | `sign-in`: `github`, and `allowed-github`: the users' GitHub logins, or `*` for anyone                |
-| The tools only need to know who the user is, and the users are named | `sign-in`: `access`, and `who-may-sign-in`: their email addresses, an email domain, or both           |
-| The tools need to know the user, and anyone may use them             | `sign-in`: `github`, and `allowed-github`: `*`                                                        |
-| A single client of the person's own                                  | `sign-in`: `bearer`                                                                                   |
-| Browser users are anyone                                             | `web-access`: `public`                                                                                |
-| Browser users are only the person or named people                    | `web-access`: `private`, and `who-may-sign-in`: their email addresses, an email domain, or both       |
-| A domain on Cloudflare                                               | `hostname`: a hostname on that zone, such as `tools.example.com`                                      |
-| The free address                                                     | `hostname`: `workers.dev`                                                                             |
-| What they're building                                                | `brief`, `description`: one sentence that starts with a verb, and `display-name`: up to 60 characters |
-| The person didn't say that the code is open source                   | `license`: `none`                                                                                     |
-| The code is open source                                              | `license`: ask whether `mit-0` or `mit`                                                               |
+| From the interview                                          | Script answers                                                                                        |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| An assistant only, a browser only, or both                  | `parts`: `mcp`, `web`, or `mcp,web`                                                                   |
+| The person chose sign-in through Cloudflare Access          | `sign-in`: `access`, and `who-may-sign-in`: their email addresses, an email domain, or both           |
+| The person chose sign-in with GitHub                        | `sign-in`: `github`, and `allowed-github`: the users' GitHub logins, or `*` for anyone                |
+| The person chose one shared token                           | `sign-in`: `bearer`                                                                                   |
+| The person said that anyone may open the web app            | `web-access`: `public`                                                                                |
+| The person said that only named people may open the web app | `web-access`: `private`, and `who-may-sign-in`: their email addresses, an email domain, or both       |
+| A domain on Cloudflare                                      | `hostname`: a hostname on that zone, such as `tools.example.com`                                      |
+| The free address                                            | `hostname`: `workers.dev`                                                                             |
+| What they're building                                       | `brief`, `description`: one sentence that starts with a verb, and `display-name`: up to 60 characters |
+| The person didn't say that the code is open source          | `license`: `none`                                                                                     |
+| The code is open source                                     | `license`: ask whether `mit-0` or `mit`                                                               |
 
 The script enforces these rules, so recommend a combination that keeps them:
 
@@ -97,8 +114,9 @@ its users and name the first tools or pages to build. It's 40 to 800 characters,
 technology that setup creates or that the person asked for.
 
 Before you create anything, tell the person in a few plain sentences what you'll set up and why
-each choice follows from what they said, and read them the brief. Then ask one question: is this
-right? On a no, go back to the interview question that their answer changes.
+each choice follows from what they said, and read them the brief. Name how people sign in and
+who may open the web app, as the person chose them. Then ask one question: is this right? On a
+no, go back to the interview question that their answer changes.
 
 ## Bootstrap
 
@@ -148,7 +166,12 @@ right? On a no, go back to the interview question that their answer changes.
    node scripts/setup.ts answer brief "Tracks support requests for the Acme team. First, build a tool that lists open requests."
    ```
 
-6. Start the loop. The script reads the project name and the owner from the `origin` remote of
+6. Write what the interview settled to `.plans/first-build.md` in the project folder: the goal,
+   each decision that the person made, in their words where you can, and each open point. The
+   brief is short, and this file holds the rest, so that the build after setup doesn't depend on
+   what this session remembers. Git ignores `.plans/`, so the file isn't a change to the project.
+
+7. Start the loop. The script reads the project name and the owner from the `origin` remote of
    the clone, so it never asks for them again.
 
 ## The loop
@@ -259,21 +282,26 @@ checks.
 ## Build what the person asked for
 
 Setup being finished isn't the end of the request. `finish` moves the brief into the
-**What to build** section of `AGENTS.md`, and its `DONE` block prints it. Then:
+**What to build** section of `AGENTS.md`, and its `DONE` block prints it.
 
-1. Create a branch, such as `feat/first-tools`.
-2. Build the first tools or pages that the brief names, with the project's own rules in
-   `AGENTS.md`. The examples go, they don't stay next to the new work:
-   - With an MCP endpoint, follow "Replace the example tools": the new tools replace
-     `example_echo_message`, `account_record_visit`, and the example `profile` scope where the
-     new tools don't need it. Then follow "Add an MCP tool" for each tool.
+From here, work the way that the **How to work** section of `AGENTS.md` describes. It and
+`docs/workflow.md` stay in the project after this runbook is gone, so read them now. Don't write
+code before the plan exists, is reviewed, and has the person's yes. For the first build:
+
+1. **Investigate** from the brief and `.plans/first-build.md`, not from what you remember of the
+   interview. The interview covered the goal, so ask the person only what's still open. Research
+   the facts in the project's code now that it exists.
+2. **Plan** in `.plans/first-build.md`, under the notes from the interview. The plan covers what
+   happens to the examples, which go and don't stay next to the new work:
+   - With an MCP endpoint, follow "Replace the example tools" in `AGENTS.md`: the new tools
+     replace `example_echo_message`, `account_record_visit`, and the example `profile` scope
+     where the new tools don't need it. Then follow "Add an MCP tool" for each tool.
    - With a web app, the first page replaces the example home page in `src/web/routes/home.tsx`.
-     Follow "Add a route" for each other page.
-3. Run `pnpm verify` until it passes, then commit and push the branch.
-4. Open a pull request with `gh pr create`. The Preview workflow deploys a Preview and comments
-   its URL. Wait until the pull request's checks pass.
-5. Give the person the pull request and the Preview URL. Merging deploys to production, so leave
-   the merge to them.
+     Follow "Add a route" for each other page. On a private site, the plan says for each page
+     whether someone can open it without signing in.
+3. **Review the plan, play it back, implement, and deliver**, as `docs/workflow.md` describes
+   each phase. Work on a branch, such as `feat/first-tools`, and open the pull request with
+   `gh pr create`. Merging deploys to production, so leave the merge to the person.
 
 Keep the **What to build** section true as the plan changes, or delete it when it stops
 helping.

@@ -19,6 +19,13 @@ worker-configuration.d.ts
 # Setup state with email addresses and secret hashes, which setup deletes when it finishes
 setup.local.json
 
+# Working files of coding agents: plans, the working copies of subagents, and what browser tools
+# write. The linter and the formatter skip ignored paths, so a nested working copy doesn't fail
+# `pnpm verify`.
+.plans/
+.claude/worktrees/
+.playwright-mcp/
+
 # Test and compiler output
 coverage/
 *.tsbuildinfo

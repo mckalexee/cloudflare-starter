@@ -200,6 +200,8 @@ required, because `pnpm deploy` is a built-in pnpm command.
   is a symlink to it.
 - [docs/conventions.md](docs/conventions.md): the opinions on structure, naming, comments, errors,
   logging, dependencies, and writing style.
+- [docs/workflow.md](docs/workflow.md): how a coding agent takes a request from an idea to a pull
+  request: investigate, plan, review, implement.
 - [docs/deploy.md](docs/deploy.md): secrets, Previews, custom domains, Renovate, and observability.
 - [docs/testing.md](docs/testing.md): how tests run in workerd and the test helpers.
 

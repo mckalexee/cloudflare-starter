@@ -250,7 +250,7 @@ The allow application admits the people that its policy names. `allow-app.json`:
   "name": "<name> web app",
   "domain": "<host>",
   "destinations": [{ "type": "public", "uri": "<host>" }],
-  "session_duration": "24h",
+  "session_duration": "720h",
   "policies": [
     {
       "name": "Allowed people",

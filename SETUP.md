@@ -323,8 +323,14 @@ helping.
 - **The deploy job failed twice.** The script shows the job's log. This is the one case where you
   change files before setup is finished: fix the cause that the log names, and run the script
   again. Its verify and commit steps check and commit the fix, and its push step pushes it.
-- **`Port 5173 is already in use`** when you run `pnpm dev`. Ask the person to stop the process
-  that holds the port. Setup itself never starts the dev server.
+- **`Port <port> is already in use`** when you run `pnpm dev`. Setup gives each project its own
+  port, derived from the project name, so the process that holds it is often another copy of the
+  same project, such as one in another working tree. Run the second copy on a free port with
+  `pnpm dev --port <n>`. A sign-in flow that depends on a registered callback URL works only on
+  the project's own port. To change the port of a project that's already set up, change
+  `server.port` in `vite.config.ts`, the `localhost` URLs in the docs, and, when the project signs
+  in with GitHub, the callback URL of the GitHub OAuth app. Setup itself never starts the dev
+  server.
 - **A run takes a while.** The probes call GitHub and Cloudflare, and the install and
   `pnpm verify` take a minute or two. Wait for the run to end.
 - **Rehearse in a scratch copy.** `SETUP_FIXTURE=<file>` replaces every probe of GitHub and

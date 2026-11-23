@@ -3,20 +3,14 @@
 // dependency, and a failed deploy after the push reverts the finish commit.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
 
+import { devPort } from "../derive.ts";
 import { checkDeploy, finish, FINISH_SUBJECT, finishCopyDir } from "../finish.ts";
-import { manifestHash, treeFingerprint } from "../probes.ts";
+import { manifestHash, TEMPLATE_PORT, treeFingerprint } from "../probes.ts";
 import { fake } from "./fakes.ts";
 
 // `describe()` and `test()` from `node:test` return promises that the test runner awaits.
@@ -103,8 +97,12 @@ function finishedProject(): { root: string; fixture: string; home: string } {
     "# - `setup` runs the setup scenarios.\nname: CI\njobs:\n  setup:\n    runs-on: ubuntu-latest\n  workflows:\n    runs-on: ubuntu-latest\n",
   );
   write(root, ".gitignore", "node_modules/\n\n# Setup state\nsetup.local.json\n");
-  mkdirSync(path.join(root, "scripts"), { recursive: true });
-  copyFileSync(PRUNE, path.join(root, "scripts", "prune.ts"));
+  // The rename step gave the project's copy of `prune.ts` the project's own dev server port.
+  write(
+    root,
+    "scripts/prune.ts",
+    readFileSync(PRUNE, "utf8").replaceAll(TEMPLATE_PORT, `$1${String(devPort("acme-tools"))}`),
+  );
   write(root, "scripts/setup.ts", "// The setup script.\n");
   write(root, "scripts/setup/planner.ts", "// The planner, which SETUP.md describes.\n");
   write(root, "SETUP.md", "# Set up a project from this template\n");

@@ -150,6 +150,19 @@ The dev server listens on port 5173 and stops if another process holds that port
 
 <!-- @starter:end -->
 
+Each project made from the template gets its own port from setup, so two projects can run
+`pnpm dev` at the same time. To run a second copy of this project, such as in another working
+tree, start it with `pnpm dev --port <n>`. A sign-in flow that depends on a registered callback
+URL works only on the project's own port.
+
+To change the port, change `server.port` in `vite.config.ts` and the `localhost` URLs in the docs.
+
+<!-- @starter:oauth -->
+
+Then change the callback URL of the GitHub OAuth app to match.
+
+<!-- @starter:end -->
+
 <!-- @starter:mcp -->
 
 ## Connect an MCP client

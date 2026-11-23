@@ -24,7 +24,9 @@ Static files in `public/` never reach the Worker. The assets router serves them 
 
 `react-router.config.ts` sets `appDirectory: "src/web"` and `ssr: true`. `vite.config.ts` puts
 `cloudflare({ viteEnvironment: { name: "ssr" } })` before `reactRouter()` so the two plugins
-share the `ssr` environment, and pins the dev server to port 5173.
+share the `ssr` environment, and pins the dev server to port 5173. Each project made from the
+template has its own port. [The README](../README.md#run-it-locally) says how to run a second
+copy or change the port.
 
 ## Identity in loaders
 

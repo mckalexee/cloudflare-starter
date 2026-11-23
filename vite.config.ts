@@ -17,8 +17,15 @@ export default defineConfig({
     reactRouter(),
     // @starter:end
   ],
+  // The port is fixed and is this project's own. A second project that answered on the same port
+  // would receive this project's cookies and saved URLs, so the dev server stops when the port is
+  // taken instead of moving to the next one. `pnpm dev --port <n>` runs a second copy.
+  // @starter:mcp
+  // MCP clients save the endpoint's URL with the port in it.
+  // @starter:end
   // @starter:oauth
-  // A fixed port keeps the local `MCP_RESOURCE` URL valid, because OAuth tokens are bound to it.
+  // OAuth tokens are bound to the local `MCP_RESOURCE` URL, and the GitHub OAuth app's callback URL
+  // names the port.
   // @starter:end
   server: { port: 5173, strictPort: true },
 });

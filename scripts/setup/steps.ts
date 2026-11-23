@@ -116,7 +116,7 @@ export function summaryLines(ctx: Context): string[] {
     "",
     "In the project folder:",
     "- A block at the top of AGENTS.md that says setup isn't finished.",
-    `- The template's name replaced with ${name} and ${ctx.answers["display-name"] ?? name}.`,
+    `- The template's name replaced with ${name} and ${ctx.answers["display-name"] ?? name}, and its dev server port with ${String(devPort(name))}.`,
     `- The template pruned with ${selection.join(" ")}, then pnpm install.`,
     "- The configuration edits, .dev.vars, pnpm verify, and a commit.",
   );

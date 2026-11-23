@@ -30,12 +30,13 @@ larger through these phases, in order. [docs/workflow.md](docs/workflow.md) has 
 
 1. **Investigate.** Research facts yourself. Ask the person about intent, one question at a time,
    until you're 95% sure of what they want.
-2. **Plan.** Write the plan to `.plans/<topic>.md` before you write any code.
+2. **Plan.** Write the plan to `.plans/<topic>.md` before you write any code, with each task as a
+   brief for a subagent.
 3. **Review the plan.** Fresh subagents find what it missed. Verify each finding yourself, and
    never let one change what the person decided.
 4. **Play back.** Tell the person what you'll build, and wait for a yes.
-5. **Implement.** Give each task to a fresh subagent with a brief that stands alone, and verify
-   each result yourself.
+5. **Implement.** Subagents write the code when your harness has them. Give each task to a fresh
+   one with a brief that stands alone, and verify each result yourself.
 6. **Deliver.** Open a pull request, and give the person its Preview URL. The person merges.
 
 The main thread holds the goal, the plan, and the decisions. Delegate the reading, the research,

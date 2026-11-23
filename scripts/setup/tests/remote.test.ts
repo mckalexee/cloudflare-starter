@@ -687,8 +687,8 @@ describe("the Access application payload", () => {
   test("keeps an MCP client connected for 10 years after one sign-in", () => {
     const payload = JSON.stringify(accessAppPayload(app));
     assert.match(payload, /"grant":\{"access_token_lifetime":"15m","session_duration":"87600h"\}/);
-    // The application's own session, for sign-ins in a browser, stays at one day.
-    assert.match(payload, /"domain":"[^"]+","destinations":\[[^\]]+\],"session_duration":"24h"/);
+    // The application's own session, for sign-ins in a browser, lasts 30 days.
+    assert.match(payload, /"domain":"[^"]+","destinations":\[[^\]]+\],"session_duration":"720h"/);
   });
 
   test("has no Managed OAuth settings for a web app alone", () => {

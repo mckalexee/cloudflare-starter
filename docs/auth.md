@@ -424,7 +424,7 @@ Pick the layout that fits the web app:
   "name": "<name>",
   "domain": "<host>",
   "destinations": [{ "type": "public", "uri": "<host>" }],
-  "session_duration": "24h",
+  "session_duration": "720h",
   "oauth_configuration": {
     "enabled": true,
     "dynamic_client_registration": {
@@ -472,7 +472,8 @@ These Managed OAuth settings are the ones that work with Claude Code and claude.
   within 15 minutes.
 - The grant's `session_duration` is 10 years, written as `87600h`. It's how long a client stays
   connected after one sign-in. Keep it long: an agent's connection can't sign in again without a
-  person. The application's own `session_duration` of 24 hours applies to sign-ins in a browser.
+  person. The application's own `session_duration` of 30 days, written as `720h`, applies to
+  sign-ins in a browser. Access allows at most one month there.
 
 `bypass-app.json` for the host layout:
 

@@ -25,24 +25,22 @@ The web app is React Router 8 behind Hono, and Cloudflare Access can make it pri
 
 ## How to work
 
-A change that one sentence describes fully and that touches a few files needs no ceremony: make
-it, and run `pnpm verify`. Take everything else through these phases, in order.
-[docs/workflow.md](docs/workflow.md) has the detail for each one.
+Make a change that one sentence describes fully right away, and run `pnpm verify`. Take anything
+larger through these phases, in order. [docs/workflow.md](docs/workflow.md) has the detail.
 
 1. **Investigate.** Research facts yourself. Ask the person about intent, one question at a time,
    until you're 95% sure of what they want.
 2. **Plan.** Write the plan to `.plans/<topic>.md` before you write any code.
-3. **Review the plan.** Fresh subagents look for what it missed. Verify each finding yourself
-   before it changes the plan, and never let a finding change what the person decided.
+3. **Review the plan.** Fresh subagents find what it missed. Verify each finding yourself, and
+   never let one change what the person decided.
 4. **Play back.** Tell the person what you'll build, and wait for a yes.
 5. **Implement.** Give each task to a fresh subagent with a brief that stands alone, and verify
    each result yourself.
 6. **Deliver.** Open a pull request, and give the person its Preview URL. The person merges.
 
-The main thread holds the goal, the plan, and the decisions. If your harness has subagents,
-delegate the reading, the research, the implementation, and the reviews to them, and keep your
-own context for directing the work. Keep the result simple: build what the plan names, with what
-the project already has.
+The main thread holds the goal, the plan, and the decisions. Delegate the reading, the research,
+the implementation, and the reviews to subagents when your harness has them. Build what the plan
+names, with what the project already has.
 
 ## Commands
 

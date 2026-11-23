@@ -3,6 +3,7 @@
 // the planner against it walks a whole setup run without touching a repository or an account.
 import {
   desiredAccessApps,
+  hasD1,
   previewSecretNames,
   signIn as signInOf,
   workerSecretNames,
@@ -34,6 +35,7 @@ export const SHARED_ANSWERS: Scenario = {
   hostname: "workers.dev",
   "allowed-github": "octocat",
   "oauth-previews": "no",
+  database: "none",
   license: "mit-0",
   "cloudflare-account": ACCOUNT_A,
   "workers-subdomain": "acme",
@@ -42,11 +44,11 @@ export const SHARED_ANSWERS: Scenario = {
   renovate: "not-now",
 };
 
-/** The 11 scenarios of the CI setup matrix. */
+/** The 11 scenarios of the CI setup matrix. Two of them keep the D1 database. */
 export const SCENARIOS: Record<string, Scenario> = {
   "mcp github": { parts: "mcp", "sign-in": "github" },
   "mcp bearer": { parts: "mcp", "sign-in": "bearer" },
-  "mcp access": { parts: "mcp", "sign-in": "access" },
+  "mcp access": { parts: "mcp", "sign-in": "access", database: "d1" },
   "web public": { parts: "web", "web-access": "public" },
   "web private": { parts: "web", "web-access": "private" },
   "both github public": { parts: "mcp,web", "sign-in": "github", "web-access": "public" },
@@ -55,6 +57,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     "sign-in": "github",
     "web-access": "private",
     hostname: "tools.example.com",
+    database: "d1",
   },
   "both bearer public": { parts: "mcp,web", "sign-in": "bearer", "web-access": "public" },
   "both bearer private": {
@@ -81,7 +84,7 @@ export function freshContext(options: WorldOptions = {}): Context {
       wranglerVersion: "4.158.0",
       agentsBlock: false,
       renameLeftovers: ["package.json"],
-      tree: { parts: ["mcp", "web"], signIn: "github", pristine: true },
+      tree: { parts: ["mcp", "web"], signIn: "github", d1: true, pristine: true },
       installed: false,
       configuredHost: null,
       configPending: ["wrangler.jsonc"],
@@ -219,7 +222,8 @@ export function doStep(ctx: Context, id: string): void {
         .split(",")
         .filter((part): part is Part => part === "mcp" || part === "web");
       const signIn = signInOf(answers) ?? null;
-      repo.tree = { parts, signIn, pristine: parts.length === 2 && signIn === "github" };
+      const d1 = hasD1(answers);
+      repo.tree = { parts, signIn, d1, pristine: parts.length === 2 && signIn === "github" && d1 };
       touchTree(ctx);
       break;
     }
@@ -235,6 +239,13 @@ export function doStep(ctx: Context, id: string): void {
       // The step records the IDs in `setup.json`, which changes the tree.
       ctx.resources.kvProduction = "kv-production";
       ctx.resources.kvPreview = "kv-preview";
+      touchTree(ctx);
+      break;
+    case "d1-databases":
+      facts.d1Databases = { production: "d1-production", preview: "d1-preview" };
+      // The step records the IDs in `setup.json`, which changes the tree.
+      ctx.resources.d1Production = "d1-production";
+      ctx.resources.d1Preview = "d1-preview";
       touchTree(ctx);
       break;
     case "access-otp":

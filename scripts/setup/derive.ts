@@ -25,6 +25,11 @@ export function hasWeb(answers: Answers): boolean {
   return parts(answers)?.includes("web") ?? false;
 }
 
+/** Whether the answers keep the D1 database. */
+export function hasD1(answers: Answers): boolean {
+  return answers.database === "d1";
+}
+
 /** The MCP sign-in mode, or `undefined` without the MCP endpoint or before the answer. */
 export function signIn(answers: Answers): SignIn | undefined {
   if (!hasMcp(answers)) {
@@ -229,6 +234,7 @@ export function apiTokenPermissions(answers: Answers): { key: string; type: stri
   return [
     { key: "workers_scripts", type: "edit" },
     ...(hasMcp(answers) ? [{ key: "workers_kv_storage", type: "edit" }] : []),
+    ...(hasD1(answers) ? [{ key: "d1", type: "edit" }] : []),
     { key: "account_settings", type: "read" },
     ...(customDomain(answers) ? [{ key: "workers_routes", type: "edit" }] : []),
   ];
@@ -284,12 +290,16 @@ export function titleCase(name: string): string {
 }
 
 /** A resource with the project's name whose ID `setup.json` doesn't record. */
-export type Conflict = { key: "kvProduction" | "kvPreview" | "worker"; id: string; label: string };
+export type Conflict = {
+  key: "kvProduction" | "kvPreview" | "d1Production" | "d1Preview" | "worker";
+  id: string;
+  label: string;
+};
 
 /**
- * The KV namespaces and the Worker that carry the project's name but that setup didn't create or
- * adopt. Each needs the person's word before setup uses it. A Worker that this repository's deploy
- * job already deployed counts as the project's own.
+ * The KV namespaces, the D1 databases, and the Worker that carry the project's name but that
+ * setup didn't create or adopt. Each needs the person's word before setup uses it. A Worker that
+ * this repository's deploy job already deployed counts as the project's own.
  */
 export function conflicts(ctx: Context): Conflict[] {
   const { name } = ctx.repo.origin;
@@ -302,6 +312,17 @@ export function conflicts(ctx: Context): Conflict[] {
   }
   if (preview !== null && ctx.resources.kvPreview !== preview) {
     found.push({ key: "kvPreview", id: preview, label: `the KV namespace ${name}-kv-preview` });
+  }
+  const d1 = hasD1(ctx.answers) ? ctx.facts.d1Databases : { production: null, preview: null };
+  if (d1.production !== null && ctx.resources.d1Production !== d1.production) {
+    found.push({ key: "d1Production", id: d1.production, label: `the D1 database ${name}-db` });
+  }
+  if (d1.preview !== null && ctx.resources.d1Preview !== d1.preview) {
+    found.push({
+      key: "d1Preview",
+      id: d1.preview,
+      label: `the D1 database ${name}-db-preview`,
+    });
   }
   const worker = ctx.facts.worker;
   if (worker !== null && ctx.resources.worker !== worker.tag && !ctx.facts.repoDeployed) {

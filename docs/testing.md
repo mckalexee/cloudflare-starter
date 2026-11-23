@@ -51,6 +51,13 @@ fails and the normal run passes, a test depends on the order the files run in.
 
 <!-- @starter:end -->
 
+<!-- @starter:d1 -->
+
+- `miniflare.bindings` also sets `TEST_MIGRATIONS` to the D1 migrations, and `setupFiles` runs
+  `test/helpers/d1.ts` before each test file. [Test D1](#test-d1) explains both.
+
+<!-- @starter:end -->
+
 - `testTimeout` is 15 seconds instead of vitest's 5. The first request in a test file loads the
   Worker and its dependencies, which can take longer than five seconds on a busy machine.
 - `coverage` uses istanbul over `src/**`. Istanbul instruments the code before it runs, so it
@@ -229,6 +236,23 @@ test reuses another test's keys. A test enables the network, adds `issuer.certs`
 
 A private-site test also sets `WEB_ACCESS` to `private` with `useWebAccess()`, as
 `test/web/account.test.ts` does.
+
+<!-- @starter:end -->
+
+<!-- @starter:d1 -->
+
+## Test D1
+
+`env.DB` is a local D1 database. Each test file starts with its own empty database, and
+`test/helpers/d1.ts` applies every migration in `migrations/` to it before the file's tests run.
+Rows that a test writes stay for the rest of the file, so give each test its own rows, or delete
+them in `afterEach`.
+
+`vitest.config.ts` reads the migrations with `readD1Migrations()` from `@cloudflare/vitest-plugin`
+and passes them as the `TEST_MIGRATIONS` binding, because the setup file runs in workerd, which
+can't read the file system. The setup file applies them with `applyD1Migrations()` from
+`cloudflare:test`. A new migration needs no test setup. `test/d1/database.test.ts` checks that
+every migration is applied.
 
 <!-- @starter:end -->
 

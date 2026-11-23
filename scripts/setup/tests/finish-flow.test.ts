@@ -109,7 +109,7 @@ function finishedProject(): { root: string; fixture: string; home: string } {
   write(
     root,
     "setup.json",
-    `${JSON.stringify({ answers: { brief: "Tracks support requests for the Acme team. First, build a tool that lists open requests and a page that shows one request.", "display-name": "Acme Tools", description: "", parts: "web", "web-access": "public", hostname: "workers.dev", license: "mit-0" } }, null, 2)}\n`,
+    `${JSON.stringify({ answers: { brief: "Tracks support requests for the Acme team. First, build a tool that lists open requests and a page that shows one request.", "display-name": "Acme Tools", description: "", parts: "web", "web-access": "public", database: "none", hostname: "workers.dev", license: "mit-0" } }, null, 2)}\n`,
   );
   write(root, "node_modules/.modules.yaml", "");
   git(root, "add", "--all");

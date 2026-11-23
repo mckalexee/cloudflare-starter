@@ -6,6 +6,7 @@ import {
   accessUsed,
   desiredAccessApps,
   devVarKeys,
+  hasD1,
   hasMcp,
   host,
   previewSecretNames,
@@ -129,6 +130,7 @@ const ITEMS: Item[] = [
   questionItem("web-access"),
   questionItem("who-may-sign-in"),
   questionItem("oauth-previews"),
+  questionItem("database"),
   questionItem("license"),
   stepItem("agents-block", { satisfied: (ctx) => ctx.repo.agentsBlock }),
   stepItem("rename", { satisfied: (ctx) => ctx.repo.renameLeftovers.length === 0 }),
@@ -159,6 +161,12 @@ const ITEMS: Item[] = [
     applies: (ctx) => hasMcp(ctx.answers),
     satisfied: (ctx) =>
       ctx.facts.kvNamespaces.production !== null && ctx.facts.kvNamespaces.preview !== null,
+  }),
+  stepItem("d1-databases", {
+    remote: true,
+    applies: (ctx) => hasD1(ctx.answers),
+    satisfied: (ctx) =>
+      ctx.facts.d1Databases.production !== null && ctx.facts.d1Databases.preview !== null,
   }),
   stepItem("access-otp", {
     remote: true,

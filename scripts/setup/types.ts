@@ -17,6 +17,7 @@ export type QuestionKey =
   | "sign-in"
   | "web-access"
   | "who-may-sign-in"
+  | "database"
   | "cloudflare-account"
   | "workers-subdomain"
   | "hostname"
@@ -97,6 +98,8 @@ export type RemoteFacts = {
   } | null;
   /** The IDs of the project's KV namespaces, `<name>-kv` and `<name>-kv-preview`. */
   kvNamespaces: { production: string | null; preview: string | null };
+  /** The IDs of the project's D1 databases, `<name>-db` and `<name>-db-preview`. */
+  d1Databases: { production: string | null; preview: string | null };
   /** The project's Access applications: the allow application and the bypass application. */
   accessApps: { allow: AccessAppFact | null; bypass: AccessAppFact | null };
   /** Whether GitHub accepts the client ID and secret in `.dev.vars`, or `null` before a check. */
@@ -130,6 +133,8 @@ export type RemoteFacts = {
 export type Resources = {
   kvProduction?: string;
   kvPreview?: string;
+  d1Production?: string;
+  d1Preview?: string;
   accessAllow?: string;
   accessBypass?: string;
   worker?: string;
@@ -139,7 +144,9 @@ export type Resources = {
 export type TreeFacts = {
   parts: Part[];
   signIn: SignIn | null;
-  /** Whether nothing has been pruned yet: both parts and GitHub OAuth are present. */
+  /** Whether any of the D1 database's files remain, such as `migrations/`. */
+  d1: boolean;
+  /** Whether nothing has been pruned yet: both parts, GitHub OAuth, and D1 are present. */
   pristine: boolean;
 };
 
@@ -227,6 +234,7 @@ export type StepId =
   | "install"
   | "workers-subdomain"
   | "kv-namespaces"
+  | "d1-databases"
   | "access-otp"
   | "access-apps"
   | "config"

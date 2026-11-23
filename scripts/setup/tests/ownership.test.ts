@@ -43,6 +43,29 @@ describe("resources with the project's name", () => {
     });
   });
 
+  test("a D1 database that setup didn't record asks the person before anything uses it", () => {
+    const { ctx } = walk(SCENARIOS["mcp access"] ?? {});
+    ctx.resources = {};
+    ctx.facts.repoDeployed = true;
+    assert.deepEqual(
+      conflicts(ctx).map((conflict) => conflict.key),
+      ["kvProduction", "kvPreview", "d1Production", "d1Preview"],
+    );
+    assert.equal(conflicts(ctx)[2]?.label, "the D1 database acme-tools-db");
+    assert.deepEqual(plan(ctx), {
+      kind: "question",
+      key: "existing-resources",
+      problem: undefined,
+    });
+  });
+
+  test("a D1 database with the project's name doesn't matter to a project without D1", () => {
+    const { ctx } = walk(SCENARIOS["web public"] ?? {});
+    ctx.facts.d1Databases = { production: "other-db", preview: "other-db-preview" };
+    assert.deepEqual(conflicts(ctx), []);
+    assert.equal(plan(ctx).kind, "done");
+  });
+
   test("the answer something-else leads to a new name, never to the resources", () => {
     const { ctx } = walk(SCENARIOS["mcp bearer"] ?? {});
     ctx.resources = {};

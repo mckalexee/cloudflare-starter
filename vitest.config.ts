@@ -1,6 +1,8 @@
 // Test runner configuration. Tests run inside workerd through the Cloudflare plugin, so they use
 // the same bindings and runtime APIs as the deployed Worker.
-import { cloudflareTest } from "@cloudflare/vitest-plugin";
+// @starter:d1
+import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
+// @starter:end
 // @starter:web
 import { reactRouter } from "@react-router/dev/vite";
 // @starter:end
@@ -40,6 +42,13 @@ Object.assign(TEST_SECRETS, {
 for (const [key, value] of Object.entries(TEST_SECRETS)) {
   process.env[key] ??= value;
 }
+// @starter:d1
+
+// The D1 migrations in `migrations/`, the folder that `migrations_dir` in `wrangler.jsonc` names.
+// The setup file runs in workerd, which can't read the file system, so it gets them through the
+// `TEST_MIGRATIONS` binding.
+const TEST_MIGRATIONS = await readD1Migrations("./migrations");
+// @starter:end
 
 export default defineConfig({
   plugins: [
@@ -57,6 +66,9 @@ export default defineConfig({
           // The resource URL matches the origin that tests send requests to.
           MCP_RESOURCE: "http://localhost:5173/mcp",
           // @starter:end
+          // @starter:d1
+          TEST_MIGRATIONS,
+          // @starter:end
         },
       },
     }),
@@ -72,6 +84,11 @@ export default defineConfig({
   test: {
     // Tests live in `test/`, as docs/conventions.md says. Nothing else runs in workerd.
     dir: "test",
+    // @starter:d1
+    // Applies the D1 migrations at the start of each test file, because each file gets its own
+    // storage.
+    setupFiles: ["./test/helpers/d1.ts"],
+    // @starter:end
     // The first request in a test file loads the Worker and its dependencies, which can take
     // longer than the default five seconds on a busy machine.
     testTimeout: 15_000,

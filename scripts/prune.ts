@@ -1,12 +1,15 @@
 // Turns the template into one project variant, and later removes the template's prune machinery.
 // The setup names the whole selection in one run:
 //
-//   node scripts/prune.ts --parts <mcp,web|mcp|web> [--sign-in <github|bearer|access>] [--finish]
+//   node scripts/prune.ts --parts <mcp,web|mcp|web> [--sign-in <github|bearer|access>]
+//     [--database <d1|none>] [--finish]
 //
 // `--parts` lists the parts to keep, separated by commas. `--sign-in` picks how MCP clients sign
 // in: GitHub OAuth, one static bearer token, or Cloudflare Access. It's required when the MCP
-// endpoint stays and not allowed without it. `--parts mcp,web --sign-in github` keeps the template
-// as it is. The older single-variant form still works, one variant per run:
+// endpoint stays and not allowed without it. `--database none` drops the D1 database, and
+// `--database d1` or no `--database` keeps it. `--parts mcp,web --sign-in github` keeps the
+// template as it is. The older single-variant form still works, one variant per run, and keeps
+// the D1 database:
 //
 //   node scripts/prune.ts <mcp-only|app-only|bearer> [--finish]
 //
@@ -16,13 +19,15 @@
 //
 // A selection deletes the marked blocks of the kinds it drops, replaces the blocks that it swaps
 // for other content, deletes the files that belong only to those kinds, and removes their
-// dependencies from `package.json`. A marker is a comment line that holds only `@starter:mcp`,
-// `@starter:web`, `@starter:oauth`, or `@starter:access`, such as `// @starter:web` in code or
-// `<!-- @starter:web -->` in Markdown, and a later `@starter:end` line closes the block. Blocks
-// don't nest. `@starter:oauth` blocks belong to the OAuth flow inside the MCP part, so bearer mode
-// and Access sign-in drop them, or swap them for their own code, and keep the rest of the MCP part.
+// dependencies and scripts from `package.json`. A marker is a comment line that holds only
+// `@starter:mcp`, `@starter:web`, `@starter:oauth`, `@starter:access`, or `@starter:d1`, such as
+// `// @starter:web` in code or `<!-- @starter:web -->` in Markdown, and a later `@starter:end` line
+// closes the block. Blocks don't nest. `@starter:oauth` blocks belong to the OAuth flow inside the
+// MCP part, so bearer mode and Access sign-in drop them, or swap them for their own code, and keep
+// the rest of the MCP part.
 // `@starter:access` blocks belong to the Cloudflare Access identity check, which both the web app
-// and Access sign-in use, so only a selection with neither drops them.
+// and Access sign-in use, so only a selection with neither drops them. `@starter:d1` blocks belong
+// to the D1 database, which doesn't depend on either part.
 //
 // `--finish` strips the remaining marker lines and rewrites the `Halves present:` line in
 // `AGENTS.md` to name what's left. It deletes `SETUP.md` and the `README.md` line that points to
@@ -40,13 +45,15 @@
 import { lstatSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-type Kind = "mcp" | "web" | "oauth" | "access";
+type Kind = "mcp" | "web" | "oauth" | "access" | "d1";
 type Variant = "mcp-only" | "app-only" | "bearer";
 type Part = "mcp" | "web";
 type SignIn = "github" | "bearer" | "access";
+type Database = "d1" | "none";
 
-// The parts to keep and, with the MCP endpoint, how MCP clients sign in.
-type Selection = { parts: ReadonlySet<Part>; signIn: SignIn | undefined };
+// The parts to keep, how MCP clients sign in when the MCP endpoint stays, and whether the D1
+// database stays.
+type Selection = { parts: ReadonlySet<Part>; signIn: SignIn | undefined; database: Database };
 
 // One piece of a selection's changes. A selection applies every fragment that it needs in one run.
 type Fragment =
@@ -55,7 +62,8 @@ type Fragment =
   | "bearer"
   | "access-sign-in"
   | "access-without-web"
-  | "no-access";
+  | "no-access"
+  | "no-d1";
 
 // A path to delete. With `keep`, the path is a directory and everything in it except the listed
 // paths is deleted.
@@ -77,7 +85,8 @@ type FragmentSpec = {
   dependencies: string[];
   // Removed only when no remaining source file imports the package.
   dependenciesIfUnused: string[];
-  scripts: Record<string, { from: string; to: string }>;
+  // A script whose `to` is `null` is deleted.
+  scripts: Record<string, { from: string; to: string | null }>;
   swaps: Swap[];
   // Every `mcp` or `oauth` block in these files must match a swap, so OAuth code can't survive in a
   // selection that replaces it.
@@ -108,10 +117,11 @@ const SKIP_DIRS = new Set([
   "coverage",
 ]);
 const SKIP_FILES = new Set([SELF, "pnpm-lock.yaml", "worker-configuration.d.ts"]);
-const MARKER = /^\s*(?:\/\/|#|<!--)\s*@starter:([a-z]+)\s*(?:-->)?\s*$/;
-const KINDS = new Set<string>(["mcp", "web", "oauth", "access"]);
+const MARKER = /^\s*(?:\/\/|#|<!--)\s*@starter:([a-z][a-z0-9]*)\s*(?:-->)?\s*$/;
+const KINDS = new Set<string>(["mcp", "web", "oauth", "access", "d1"]);
 const PARTS = new Set<string>(["mcp", "web"]);
 const SIGN_INS = new Set<string>(["github", "bearer", "access"]);
+const DATABASES = new Set<string>(["d1", "none"]);
 
 const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 const COLLAPSIBLE_FILE = /\.(?:[cm]?[jt]sx?|json|jsonc|json5)$/;
@@ -287,6 +297,36 @@ const ACCESS_ONLY_LAYOUT = `Use the host layout: the allow application covers th
 \`bypass-app.json\` shows, so the deploy workflow's health check reaches the Worker.`;
 const ACCESS_AUTH_INTRO = `MCP clients sign in through Cloudflare Access. [Bearer mode](#bearer-mode) replaces it with one
 static token for a single user.`;
+
+// Without D1, the test config imports only the plugin, and `docs/deploy.md` says how to add D1 by
+// hand instead of pointing to `docs/d1.md`.
+const NO_D1_VITEST_IMPORT = `import { cloudflareTest } from "@cloudflare/vitest-plugin";`;
+const NO_D1_DEPLOY_INTRO = `The template doesn't use D1 or Durable Objects. If you add them, follow the Preview isolation
+rules from Cloudflare's [Preview resources](https://developers.cloudflare.com/workers/previews/resources/)
+page:`;
+const NO_D1_DEPLOY_BULLET = `- **D1:** Previews that bind the same \`database_id\` share rows, so bind them to a separate
+  database that they all share. \`wrangler d1 migrations apply\` reads only the top-level
+  \`d1_databases\`, never \`previews.d1_databases\`, so applying by the binding name migrates
+  production. To add D1:
+
+  1. Create two databases with \`pnpm exec wrangler d1 create <name>\`: one for production and one
+     for the Previews.
+  2. In \`wrangler.jsonc\`, declare the production database under the top-level \`d1_databases\`,
+     with \`migrations_dir\` set to \`migrations\`, and the Previews database under
+     \`previews.d1_databases\`, with the same binding name. Create the \`migrations/\` folder.
+  3. Create \`wrangler.preview-migrations.jsonc\` with only a top-level \`d1_databases\` entry for
+     the Previews database, under a binding name that no other config uses, such as \`PREVIEW_DB\`,
+     with the same \`migrations_dir\`. A command that names \`PREVIEW_DB\` without \`--config\`
+     then fails instead of reaching production.
+  4. Add **Account** > **D1** > **Edit** to the API token.
+  5. In \`deploy.yml\`, run \`pnpm exec wrangler d1 migrations apply <binding> --remote\` after the
+     build and before the deploy. In \`preview.yml\`, run
+     \`pnpm exec wrangler d1 migrations apply PREVIEW_DB --remote --config wrangler.preview-migrations.jsonc\`
+     before **Deploy the Preview**, and retry it a few times, because two pull requests can apply
+     the same migration at once. Pass both Cloudflare secrets to each step.
+  6. In \`vitest.config.ts\`, read the migrations with \`readD1Migrations()\` from
+     \`@cloudflare/vitest-plugin\` and pass them as a binding. Apply them in a setup file with
+     \`applyD1Migrations()\` from \`cloudflare:test\`, because each test file gets its own storage.`;
 
 const FRAGMENTS: Record<Fragment, FragmentSpec> = {
   "no-web": {
@@ -528,21 +568,42 @@ const FRAGMENTS: Record<Fragment, FragmentSpec> = {
     swaps: [{ file: "docs/auth.md", anchor: "Don't reuse `ACCESS_TEAM_DOMAIN`", content: "" }],
     swapsCover: [],
   },
+  "no-d1": {
+    dropKinds: ["d1"],
+    paths: [
+      { path: "wrangler.preview-migrations.jsonc" },
+      { path: "migrations" },
+      { path: "test/d1" },
+      { path: "test/helpers/d1.ts" },
+      { path: "docs/d1.md" },
+    ],
+    dependencies: [],
+    dependenciesIfUnused: [],
+    scripts: {
+      "db:migrate": { from: "wrangler d1 migrations apply DB --local", to: null },
+    },
+    swaps: [
+      { file: "vitest.config.ts", anchor: "readD1Migrations }", content: NO_D1_VITEST_IMPORT },
+      { file: "docs/deploy.md", anchor: "The template uses D1", content: NO_D1_DEPLOY_INTRO },
+      { file: "docs/deploy.md", anchor: "[d1.md](d1.md) covers the", content: NO_D1_DEPLOY_BULLET },
+    ],
+    swapsCover: [],
+  },
 };
 
 // The selection that each single-variant command stands for.
 const VARIANTS: Record<Variant, { summary: string; selection: Selection }> = {
   "mcp-only": {
     summary: "Keep the MCP endpoint with GitHub OAuth and drop the web app.",
-    selection: { parts: new Set(["mcp"]), signIn: "github" },
+    selection: { parts: new Set(["mcp"]), signIn: "github", database: "d1" },
   },
   "app-only": {
     summary: "Keep the web app and drop the MCP endpoint and its OAuth flow.",
-    selection: { parts: new Set(["web"]), signIn: undefined },
+    selection: { parts: new Set(["web"]), signIn: undefined, database: "d1" },
   },
   bearer: {
     summary: "Keep both parts and replace MCP OAuth with one static bearer token.",
-    selection: { parts: new Set(["mcp", "web"]), signIn: "bearer" },
+    selection: { parts: new Set(["mcp", "web"]), signIn: "bearer", database: "d1" },
   },
 };
 
@@ -568,6 +629,9 @@ function fragmentsFor(selection: Selection): Fragment[] {
   }
   if (!web && selection.signIn !== "access") {
     fragments.push("no-access");
+  }
+  if (selection.database === "none") {
+    fragments.push("no-d1");
   }
   return fragments;
 }
@@ -638,6 +702,10 @@ function isPart(name: string): name is Part {
 
 function isSignIn(name: string): name is SignIn {
   return SIGN_INS.has(name);
+}
+
+function isDatabase(name: string): name is Database {
+  return DATABASES.has(name);
 }
 
 function isBlank(line: string | undefined): boolean {
@@ -1261,8 +1329,13 @@ function planSelection(ws: Workspace, label: string, spec: FragmentSpec, report:
       errors.push(`package.json: expected the ${name} script to be "${from}".`);
       continue;
     }
-    pkg.scripts[name] = to;
-    scripts.push(`${name}: ${to}`);
+    if (to === null) {
+      delete pkg.scripts[name];
+      scripts.push(`${name}: deleted`);
+    } else {
+      pkg.scripts[name] = to;
+      scripts.push(`${name}: ${to}`);
+    }
   }
   ws.write("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
 
@@ -1404,7 +1477,8 @@ function usage(message?: string): never {
   console.error(
     [
       ...(message === undefined ? [] : [message, ""]),
-      "Usage: node scripts/prune.ts --parts <mcp,web|mcp|web> [--sign-in <mode>] [--finish]",
+      "Usage: node scripts/prune.ts --parts <mcp,web|mcp|web> [--sign-in <mode>]",
+      "         [--database <d1|none>] [--finish]",
       "       node scripts/prune.ts <variant> [--finish]",
       "       node scripts/prune.ts --finish",
       "",
@@ -1413,7 +1487,9 @@ function usage(message?: string): never {
       "  bearer    MCP clients send one static bearer token.",
       "  access    MCP clients sign in through Cloudflare Access.",
       "",
-      "Variants, one per run:",
+      "--database none drops the D1 database. --database d1, or no --database, keeps it.",
+      "",
+      "Variants, one per run, which keep the D1 database:",
       ...Object.entries(VARIANTS).map(([name, spec]) => `  ${name.padEnd(9)} ${spec.summary}`),
       "",
       "--finish strips the remaining markers, rewrites the Halves present line in AGENTS.md, and",
@@ -1442,6 +1518,7 @@ function parseArgs(args: string[]): Args {
   let variant: Variant | undefined;
   let parts: Set<Part> | undefined;
   let signIn: SignIn | undefined;
+  let database: Database | undefined;
   let finish = false;
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] ?? "";
@@ -1457,6 +1534,13 @@ function parseArgs(args: string[]): Args {
         usage(`--sign-in takes github, bearer, or access, not "${value}".`);
       }
       signIn = value;
+    } else if (arg === "--database" && database === undefined) {
+      index++;
+      const value = args[index] ?? "";
+      if (!isDatabase(value)) {
+        usage(`--database takes d1 or none, not "${value}".`);
+      }
+      database = value;
     } else if (variant === undefined && isVariant(arg)) {
       variant = arg;
     } else {
@@ -1464,14 +1548,14 @@ function parseArgs(args: string[]): Args {
     }
   }
   if (variant !== undefined) {
-    if (parts !== undefined || signIn !== undefined) {
-      usage("A variant can't be combined with --parts or --sign-in.");
+    if (parts !== undefined || signIn !== undefined || database !== undefined) {
+      usage("A variant can't be combined with --parts, --sign-in, or --database.");
     }
     return { selection: VARIANTS[variant].selection, label: variant, finish };
   }
   if (parts === undefined) {
-    if (signIn !== undefined) {
-      usage("--sign-in needs --parts.");
+    if (signIn !== undefined || database !== undefined) {
+      usage("--sign-in and --database need --parts.");
     }
     if (!finish) {
       usage();
@@ -1481,10 +1565,14 @@ function parseArgs(args: string[]): Args {
   if (parts.has("mcp") !== (signIn !== undefined)) {
     usage("Pass --sign-in exactly when --parts includes mcp.");
   }
-  const label = [`--parts ${[...parts].join(",")}`, signIn && `--sign-in ${signIn}`]
+  const label = [
+    `--parts ${[...parts].join(",")}`,
+    signIn && `--sign-in ${signIn}`,
+    database && `--database ${database}`,
+  ]
     .filter(Boolean)
     .join(" ");
-  return { selection: { parts, signIn }, label, finish };
+  return { selection: { parts, signIn, database: database ?? "d1" }, label, finish };
 }
 
 function main(): void {

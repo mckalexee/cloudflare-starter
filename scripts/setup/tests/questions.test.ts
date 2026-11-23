@@ -25,7 +25,15 @@ function expectedQuestions(scenario: Scenario, world: WorldOptions): string[] {
   const web = parts.includes("web");
   const mode = mcp ? scenario["sign-in"] : undefined;
   const access = (web && scenario["web-access"] === "private") || mode === "access";
-  const expected = ["brief", "display-name", "description", "parts", "hostname", "license"];
+  const expected = [
+    "brief",
+    "display-name",
+    "description",
+    "parts",
+    "database",
+    "hostname",
+    "license",
+  ];
   if (mcp) {
     expected.push("sign-in");
   }
@@ -110,6 +118,7 @@ describe("answers from the interview", () => {
     "sign-in",
     "web-access",
     "who-may-sign-in",
+    "database",
     "allowed-github",
     "hostname",
   ];
@@ -171,6 +180,7 @@ describe("answer", () => {
     refused("who-may-sign-in", "not-an-email@", answered(SCENARIOS["web private"] ?? {}));
     refused("allowed-github", "has space", ctx);
     refused("cloudflare-account", "acme", ctx);
+    refused("database", "postgres", ctx);
     refused("mcp-client", "maybe", ctx);
   });
 
@@ -198,17 +208,42 @@ describe("answer", () => {
 
   test("refuses a new parts or sign-in answer after the prune step ran", () => {
     const pruned = answered(SCENARIOS["mcp bearer"] ?? {});
-    pruned.repo.tree = { parts: ["mcp"], signIn: "bearer", pristine: false };
+    pruned.repo.tree = { parts: ["mcp"], signIn: "bearer", d1: false, pristine: false };
     assert.match(refused("parts", "mcp,web", pruned), /prune step/);
     assert.match(refused("sign-in", "github", pruned), /prune step/);
     accepted("sign-in", "bearer", pruned);
 
     // Keeping the template as it is prunes nothing, so the step counts as run once the setup
     // has started changing the tree.
-    const kept = answered(SCENARIOS["both github public"] ?? {});
+    const kept = answered({ ...SCENARIOS["both github public"], database: "d1" });
     accepted("parts", "mcp", kept);
     kept.repo.agentsBlock = true;
     assert.match(refused("parts", "mcp", kept), /prune step/);
+  });
+
+  test("refuses a new database answer after the prune step ran", () => {
+    const pruned = answered(SCENARIOS["mcp bearer"] ?? {});
+    pruned.repo.tree = { parts: ["mcp"], signIn: "bearer", d1: false, pristine: false };
+    assert.match(refused("database", "d1", pruned), /prune step/);
+    accepted("database", "none", pruned);
+
+    // A tree that still holds the D1 files doesn't match the answer none, so prune hasn't run.
+    const kept = answered({ ...SCENARIOS["both github public"], database: "d1" });
+    kept.repo.agentsBlock = true;
+    assert.match(refused("database", "none", kept), /prune step/);
+    const unpruned = answered(SCENARIOS["both github public"] ?? {});
+    unpruned.repo.agentsBlock = true;
+    accepted("database", "d1", unpruned);
+  });
+
+  test("suggests no database, and says what KV and D1 are for", () => {
+    for (const name of ["mcp bearer", "web public"]) {
+      const suggestion = question("database").suggest(answered(SCENARIOS[name] ?? {}));
+      assert.equal(suggestion?.value, "none", name);
+      assert.match(suggestion?.reason ?? "", /filters, relates, or totals/, name);
+    }
+    const mcp = question("database").suggest(answered(SCENARIOS["mcp bearer"] ?? {}));
+    assert.match(mcp?.reason ?? "", /KV/);
   });
 
   test("allows a new parts answer before the prune step", () => {

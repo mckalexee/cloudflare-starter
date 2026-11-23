@@ -14,6 +14,7 @@ import {
   desiredAccessApps,
   devPort,
   devVarKeys,
+  hasD1,
   hasMcp,
   host,
   parts,
@@ -78,6 +79,9 @@ export function summaryLines(ctx: Context): string[] {
   if (hasMcp(ctx.answers)) {
     lines.push(`- KV namespaces ${name}-kv for production and ${name}-kv-preview for Previews.`);
   }
+  if (hasD1(ctx.answers)) {
+    lines.push(`- D1 databases ${name}-db for production and ${name}-db-preview for Previews.`);
+  }
   if (accessUsed(ctx.answers) && ctx.answers["access-otp"] === "yes") {
     lines.push("- The one-time PIN login method in the Zero Trust organization.");
   }
@@ -112,6 +116,7 @@ export function summaryLines(ctx: Context): string[] {
   if (mode !== undefined) {
     selection.push(`--sign-in ${mode}`);
   }
+  selection.push(`--database ${hasD1(ctx.answers) ? "d1" : "none"}`);
   lines.push(
     "",
     "In the project folder:",
@@ -194,7 +199,8 @@ export const STEPS: Record<StepId, StepSpec> = {
   },
   prune: {
     id: "prune",
-    title: () => "Remove the code for the parts and the sign-in mode that the project doesn't use.",
+    title: () =>
+      "Remove the code for the parts, the sign-in mode, and the database that the project doesn't use.",
     remote: false,
     run: (ctx) => {
       const selection = parts(ctx.answers) ?? [];
@@ -203,6 +209,7 @@ export const STEPS: Record<StepId, StepSpec> = {
       if (mode !== undefined) {
         args.push("--sign-in", mode);
       }
+      args.push("--database", hasD1(ctx.answers) ? "d1" : "none");
       run(ctx.repo.root, process.execPath, args, { display: `node ${args.join(" ")}` });
     },
   },
@@ -226,6 +233,11 @@ export const STEPS: Record<StepId, StepSpec> = {
     "kv-namespaces",
     (ctx) =>
       `Create the KV namespaces ${ctx.repo.origin.name}-kv and ${ctx.repo.origin.name}-kv-preview.`,
+  ),
+  "d1-databases": remote(
+    "d1-databases",
+    (ctx) =>
+      `Create the D1 databases ${ctx.repo.origin.name}-db and ${ctx.repo.origin.name}-db-preview.`,
   ),
   "access-otp": remote(
     "access-otp",

@@ -537,6 +537,23 @@ export const REAL_PROBES: { [K in keyof RemoteFacts]: (ctx: Context) => RemoteFa
     const { name } = ctx.repo.origin;
     return { production: find(`${name}-kv`), preview: find(`${name}-kv-preview`) };
   },
+  d1Databases: (ctx) => {
+    const empty = { production: null, preview: null };
+    if (ctx.facts.wrangler === null || accountId(ctx) === undefined) {
+      return empty;
+    }
+    const parsed = parseJson(wrangler(ctx, ["d1", "list", "--json"]).stdout);
+    if (!Array.isArray(parsed)) {
+      return empty;
+    }
+    // The D1 API names a database's ID `uuid`.
+    const find = (name: string) => {
+      const match = parsed.find((database) => isRecord(database) && database.name === name);
+      return isRecord(match) ? (str(match.uuid) ?? null) : null;
+    };
+    const { name } = ctx.repo.origin;
+    return { production: find(`${name}-db`), preview: find(`${name}-db-preview`) };
+  },
   accessApps: (ctx) => {
     const empty = { allow: null, bypass: null };
     if (!accessUsed(ctx.answers) || ctx.facts.cf === null || accountId(ctx) === undefined) {

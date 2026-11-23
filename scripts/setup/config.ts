@@ -1,12 +1,13 @@
 // The text edits that turn the template's configuration into the project's: the vars, the
-// hostname, and the IDs in `wrangler.jsonc`, the MCP server's first sentence, and the license. Each
+// hostname, and the IDs in `wrangler.jsonc`, the Previews database's ID in
+// `wrangler.preview-migrations.jsonc`, the MCP server's first sentence, and the license. Each
 // edit is a pure function of the file's text, so the same code applies an edit and tells whether
 // it's still pending. The edits keep the layout that `oxfmt` prints, because `pnpm verify` checks
 // the formatting.
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { accessUsed, customDomain, hasMcp, hasWeb, host, signIn } from "./derive.ts";
+import { accessUsed, customDomain, hasD1, hasMcp, hasWeb, host, signIn } from "./derive.ts";
 import type { Context } from "./types.ts";
 
 /** The first line of the block that `AGENTS.md` carries until setup finishes. */
@@ -95,6 +96,30 @@ function setKvId(lines: string[], indent: number, from: number, to: number, id: 
       return;
     }
   }
+}
+
+// Sets the first `database_id` at `indent` between `from` and `to`. The template puts each D1
+// database's ID on a line of its own, so the edit needs no JSON parser.
+function setD1Id(lines: string[], indent: number, from: number, to: number, id: string): void {
+  const pattern = new RegExp(`^( {${indent}}"database_id": )"[^"]*"(,?)$`);
+  for (let index = from; index < to; index++) {
+    const match = pattern.exec(lines[index] ?? "");
+    if (match !== null) {
+      lines[index] = `${match[1] ?? ""}${JSON.stringify(id)}${match[2] ?? ""}`;
+      return;
+    }
+  }
+}
+
+/** Writes the Previews database's ID into `wrangler.preview-migrations.jsonc`. */
+export function editPreviewMigrations(text: string, ctx: Context): string {
+  const id = ctx.facts.d1Databases.preview;
+  if (id === null) {
+    return text;
+  }
+  const lines = text.split("\n");
+  setD1Id(lines, 6, 0, lines.length, id);
+  return lines.join("\n");
 }
 
 // The route lines as `oxfmt` prints them: on one line when they fit, otherwise broken open.
@@ -222,6 +247,15 @@ export function editWrangler(text: string, ctx: Context): string {
       setKvId(lines, 4, previews.start, previews.end, preview);
     }
   }
+  if (hasD1(answers)) {
+    const { production, preview } = facts.d1Databases;
+    if (production !== null) {
+      setD1Id(lines, 6, 0, previews?.start ?? lines.length, production);
+    }
+    if (preview !== null && previews !== undefined) {
+      setD1Id(lines, 8, previews.start, previews.end, preview);
+    }
+  }
   if (customDomain(answers) && hostname !== undefined) {
     lines = setCustomDomain(lines, hostname);
   }
@@ -341,6 +375,12 @@ export function configEdits(ctx: Context): ConfigEdit[] {
     },
     { file: "README.md", apply: (text) => editReadmeLicense(text, ctx.answers.license) },
   ];
+  if (hasD1(ctx.answers)) {
+    edits.push({
+      file: "wrangler.preview-migrations.jsonc",
+      apply: (text) => editPreviewMigrations(text, ctx),
+    });
+  }
   if (hasMcp(ctx.answers)) {
     edits.push({
       file: "src/mcp/instructions.ts",

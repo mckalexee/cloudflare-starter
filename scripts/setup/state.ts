@@ -22,6 +22,7 @@ const ANSWER_ORDER: AnswerKey[] = [
   "sign-in",
   "web-access",
   "who-may-sign-in",
+  "database",
   "cloudflare-account",
   "workers-subdomain",
   "hostname",
@@ -88,6 +89,8 @@ export function readShared(root: string): Answers {
 const RESOURCE_KEYS: (keyof Resources)[] = [
   "kvProduction",
   "kvPreview",
+  "d1Production",
+  "d1Preview",
   "accessAllow",
   "accessBypass",
   "worker",

@@ -172,6 +172,58 @@ describe("remote steps", () => {
     assert.deepEqual(readResources(ctx.repo.root), { kvPreview: "new-id" });
   });
 
+  test("d1-databases creates only the missing databases and records their IDs", () => {
+    const ctx = contextWithFiles({ parts: "mcp", "sign-in": "access", database: "d1" });
+    ctx.facts.d1Databases = { production: null, preview: "existing" };
+    const recorder = fake([
+      (call) =>
+        call.args.join(" ") === "d1 list --json"
+          ? {
+              stdout: JSON.stringify([
+                { uuid: "other", name: "acme-tools-db-old" },
+                { uuid: "new-id", name: "acme-tools-db" },
+                { uuid: "existing", name: "acme-tools-db-preview" },
+              ]),
+            }
+          : undefined,
+    ]);
+    try {
+      REMOTE_STEPS["d1-databases"](ctx);
+    } finally {
+      recorder.restore();
+    }
+    assert.ok(
+      isTool(
+        only(recorder.calls.filter((call) => call.args[1] === "create")),
+        "wrangler",
+        "d1",
+        "create",
+        "acme-tools-db",
+      ),
+    );
+    assert.deepEqual(readResources(ctx.repo.root), { d1Production: "new-id" });
+  });
+
+  test("the D1 probe matches the databases by their exact names", () => {
+    const ctx = contextWithFiles({ parts: "web", database: "d1" });
+    const recorder = fake([
+      (call) =>
+        isTool(call, "wrangler", "d1", "list", "--json")
+          ? {
+              stdout: `Some notice\n${JSON.stringify([
+                { uuid: "a", name: "acme-tools-db-preview" },
+                { uuid: "b", name: "acme-tools" },
+              ])}`,
+            }
+          : undefined,
+    ]);
+    try {
+      assert.deepEqual(REAL_PROBES.d1Databases(ctx), { production: null, preview: "a" });
+    } finally {
+      recorder.restore();
+    }
+  });
+
   test("access-apps creates the bypass application first, then the allow application", () => {
     const ctx = contextWithFiles({
       parts: "mcp,web",

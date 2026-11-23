@@ -97,6 +97,13 @@ Previews inherit nothing from production:
 
 <!-- @starter:end -->
 
+<!-- @starter:d1 -->
+
+- **D1:** `previews.d1_databases` binds a separate database, which every Preview shares. The
+  workflow applies the migrations to it before each Preview deploy, as [d1.md](d1.md) describes.
+
+<!-- @starter:end -->
+
 <!-- @starter:oauth -->
 
 - **`MCP_RESOURCE`:** empty in `previews.vars`, so each Preview derives its resource URL from its
@@ -221,12 +228,13 @@ repository secret from the file on standard input, and deletes the file when `fi
 To create the token by hand, go to **Manage Account** > **Account API Tokens** and add these
 permissions:
 
-| Permission                                      | Why                                                                                                |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Account** > **Workers Scripts** > **Edit**    | Deploy the Worker, and create and delete its Previews.                                             |
-| **Account** > **Workers KV Storage** > **Edit** | Only with a KV binding. Previews need edit access to the resources they use.                       |
-| **Account** > **Account Settings** > **Read**   | The token that Cloudflare generates for Workers Builds includes it. Wrangler's docs don't list it. |
-| **Zone** > **Workers Routes** > **Edit**        | Only with a custom domain, scoped to its zone, to attach the domain.                               |
+| Permission                                      | Why                                                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Account** > **Workers Scripts** > **Edit**    | Deploy the Worker, and create and delete its Previews.                                              |
+| **Account** > **Workers KV Storage** > **Edit** | Only with a KV binding. Previews need edit access to the resources they use.                        |
+| **Account** > **D1** > **Edit**                 | Only with a D1 binding. The workflows apply migrations, and Previews read and write their database. |
+| **Account** > **Account Settings** > **Read**   | The token that Cloudflare generates for Workers Builds includes it. Wrangler's docs don't list it.  |
+| **Zone** > **Workers Routes** > **Edit**        | Only with a custom domain, scoped to its zone, to attach the domain.                                |
 
 The sources are Cloudflare's pages on
 [Workers roles and permissions](https://developers.cloudflare.com/workers/authorization/workers/),
@@ -307,17 +315,26 @@ remove the entry once that version is older than the limit.
 
 ## D1 and Durable Objects
 
-The template doesn't use D1 or Durable Objects. If you add them, follow the Preview isolation
-rules from Cloudflare's [Preview resources](https://developers.cloudflare.com/workers/previews/resources/)
+<!-- @starter:d1 -->
+
+The template uses D1 but not Durable Objects. Each follows the Preview isolation rules from
+Cloudflare's [Preview resources](https://developers.cloudflare.com/workers/previews/resources/)
 page:
+
+<!-- @starter:end -->
 
 - **Durable Objects:** each Preview gets its own namespace and storage for a class that the same
   Worker defines, and that state is deleted with the Preview. Define the class and its migration,
   and declare the binding in `previews.durable_objects.bindings` too if code reads it from `env`,
   or the Preview can fail with error 1101.
-- **D1:** Previews that bind the same `database_id` share rows. Bind Previews to a staging
-  database under `previews.d1_databases`, and apply migrations to it once, because every Preview
-  shares it.
+
+<!-- @starter:d1 -->
+
+- **D1:** Previews bind a separate database, which they all share. [d1.md](d1.md) covers the
+  databases, how migrations reach each one, and how to reset the Previews database.
+
+<!-- @starter:end -->
+
 - **KV and R2:** shared unless the `previews` block binds a different namespace or bucket.
 
 Add each new binding to the [binding checklist](../AGENTS.md#add-a-binding-var-or-secret).

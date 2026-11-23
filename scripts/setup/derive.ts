@@ -241,6 +241,39 @@ export function apiTokenLink(ctx: Context): string {
   return `https://dash.cloudflare.com/?to=/:account/api-tokens&permissionGroupKeys=${permissions}&name=${name}`;
 }
 
+const DEV_PORT_MIN = 5200;
+const DEV_PORT_MAX = 5899;
+
+// Ports in the range that other local services commonly hold: mDNS, PostgreSQL, Live Server,
+// Prisma Studio, Kibana, and RabbitMQ. No port in the range is on the Fetch standard's list of
+// bad ports, which browsers refuse to connect to, so that list adds nothing here.
+const DEV_PORT_SKIP: ReadonlySet<number> = new Set([5353, 5432, 5500, 5555, 5601, 5672]);
+
+// The first port at or after the candidate that isn't on the skip list, wrapping from the top of
+// the range to the bottom.
+function stepPastSkipped(candidate: number): number {
+  const size = DEV_PORT_MAX - DEV_PORT_MIN + 1;
+  let port = candidate;
+  while (DEV_PORT_SKIP.has(port)) {
+    port = DEV_PORT_MIN + ((port - DEV_PORT_MIN + 1) % size);
+  }
+  return port;
+}
+
+/**
+ * The dev server port for a project, from 5200 to 5899. It's a 32-bit FNV-1a hash of the project
+ * name, so every clone of a project gets the same port and two projects rarely share one. The
+ * port is fixed rather than picked at run time, because OAuth callbacks and MCP clients hold the
+ * origin.
+ */
+export function devPort(name: string): number {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(name)) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return stepPastSkipped(DEV_PORT_MIN + (hash % (DEV_PORT_MAX - DEV_PORT_MIN + 1)));
+}
+
 /** Title case for a project name, as the suggested display name. */
 export function titleCase(name: string): string {
   return name

@@ -163,18 +163,29 @@ export function isSetupFile(file: string): boolean {
 
 const TEMPLATE_NAMES = /(?<!mckalexee\/)cloudflare-starter|Cloudflare Starter/;
 
+/**
+ * The template's dev server port in the forms that name it as a port, with the prefix in the
+ * first group. Bare digits never match, so the lockfile and hashes stay intact.
+ */
+export const TEMPLATE_PORT = /(\blocalhost:|\[::1\]:|\bport:? |\bPort )5173(?!\d)/g;
+
 function isText(buffer: Uint8Array): boolean {
   return !buffer.subarray(0, 8000).includes(0);
 }
 
-/** The files outside the setup script that still name the template. */
+/** The files outside the setup script that still name the template or its dev server port. */
 export function renameLeftovers(root: string): string[] {
   return listFiles(root).filter((file) => {
     if (isSetupFile(file)) {
       return false;
     }
     const buffer = readFileSync(path.join(root, file));
-    return isText(buffer) && TEMPLATE_NAMES.test(buffer.toString("utf8"));
+    if (!isText(buffer)) {
+      return false;
+    }
+    const text = buffer.toString("utf8");
+    // A fresh copy, because `test()` on a global expression moves its `lastIndex`.
+    return TEMPLATE_NAMES.test(text) || new RegExp(TEMPLATE_PORT).test(text);
   });
 }
 

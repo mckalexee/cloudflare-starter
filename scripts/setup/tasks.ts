@@ -8,6 +8,7 @@ import {
   accountLabel,
   apiTokenLink,
   customDomain,
+  devPort,
   hasMcp,
   host,
   signIn,
@@ -138,7 +139,7 @@ export const TASKS: TaskSpec[] = [
       }
       return [
         ...lines,
-        `Register a GitHub OAuth app named "${ctx.answers["display-name"] ?? ctx.repo.origin.name}" with the homepage URL https://${hostname} and two callback URLs, https://${hostname}/callback and http://localhost:5173/callback, with wildcard matching off. Then select Generate a new client secret, and write both values into \`.dev.vars\` in the project folder as \`GITHUB_CLIENT_ID=<client ID>\` and \`GITHUB_CLIENT_SECRET=<client secret>\`, each on its own line. Don't paste them into the conversation.`,
+        `Register a GitHub OAuth app named "${ctx.answers["display-name"] ?? ctx.repo.origin.name}" with the homepage URL https://${hostname} and two callback URLs, https://${hostname}/callback and http://localhost:${String(devPort(ctx.repo.origin.name))}/callback, with wildcard matching off. Then select Generate a new client secret, and write both values into \`.dev.vars\` in the project folder as \`GITHUB_CLIENT_ID=<client ID>\` and \`GITHUB_CLIENT_SECRET=<client secret>\`, each on its own line. Don't paste them into the conversation.`,
       ];
     },
     link: githubAppsUrl,

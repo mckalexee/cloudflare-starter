@@ -12,6 +12,7 @@ import {
   accountLabel,
   customDomain,
   desiredAccessApps,
+  devPort,
   devVarKeys,
   hasMcp,
   host,
@@ -22,7 +23,13 @@ import {
   workersSubdomain,
 } from "./derive.ts";
 import { read, run, say, StepError } from "./exec.ts";
-import { isSetupFile, manifestHash, renameLeftovers, treeFingerprint } from "./probes.ts";
+import {
+  isSetupFile,
+  manifestHash,
+  renameLeftovers,
+  TEMPLATE_PORT,
+  treeFingerprint,
+} from "./probes.ts";
 import { REMOTE_STEPS } from "./remote-steps.ts";
 import { LOCAL_FILE, updateLocal } from "./state.ts";
 import type { Context, StepId } from "./types.ts";
@@ -164,21 +171,23 @@ export const STEPS: Record<StepId, StepSpec> = {
   rename: {
     id: "rename",
     title: (ctx) =>
-      `Replace the template's name with ${ctx.repo.origin.name} and its display name with ${ctx.answers["display-name"] ?? ""}.`,
+      `Replace the template's name with ${ctx.repo.origin.name}, its display name with ${ctx.answers["display-name"] ?? ""}, and its dev server port 5173 with ${String(devPort(ctx.repo.origin.name))}.`,
     remote: false,
     run: (ctx) => {
       const { root } = ctx.repo;
       const name = ctx.repo.origin.name;
       const display = ctx.answers["display-name"] ?? name;
+      const port = String(devPort(name));
       for (const file of renameLeftovers(root)) {
         if (isSetupFile(file)) {
           continue;
         }
-        say(`Edit ${file}: replace cloudflare-starter and Cloudflare Starter.`);
+        say(`Edit ${file}: replace cloudflare-starter, Cloudflare Starter, and port 5173.`);
         edit(root, file, (text) =>
           text
             .replaceAll(/(?<!mckalexee\/)cloudflare-starter/g, name)
-            .replaceAll("Cloudflare Starter", display),
+            .replaceAll("Cloudflare Starter", display)
+            .replaceAll(TEMPLATE_PORT, `$1${port}`),
         );
       }
     },

@@ -62,8 +62,9 @@ The plan holds:
 - **Out of scope.** What you won't build, so that nobody adds it later.
 - **Approach.** How the change works and which files it touches. Verify each claim about the
   code or a library against the version that this project uses.
-- **Tasks.** Units that one subagent can finish without a decision from you. Each task names its
-  files and the check that proves it.
+- **Tasks.** Units that one subagent can finish without a decision from you. Write each task as
+  the brief that you'll hand to a subagent in [Implement](#5-implement): its goal, its files, the
+  check that proves it, and what's out of scope. Say which tasks must run one after another.
 - **Verification.** How you'll show that the whole change works, beyond `pnpm verify`.
 
 ## 3. Review the plan
@@ -123,6 +124,11 @@ the plan file, and offer its path.
 
 ## 5. Implement
 
+If your harness has subagents, they write the code, and the main thread directs: it briefs,
+verifies, and decides. Delegate the build even when you could write it yourself. The main thread
+has to carry the work to the pull request, and a context that's full of file contents and test
+output makes its later decisions worse.
+
 **Brief each task so that it stands alone.** Give one task to one fresh subagent. The subagent
 knows only what the brief says, so the brief has:
 
@@ -145,8 +151,9 @@ port: `pnpm dev --port <n>`.
 that carry risk in full, and run `pnpm verify` yourself. Then mark the task in the plan. A
 report that says "done" isn't evidence.
 
-**Keep your own edits small.** Make a small fix directly. For anything larger, write a brief for
-a fresh subagent, and name the files, so that it starts with a small context.
+**Keep your own edits small.** Make a fix of a few lines directly, such as one that a review
+found. For anything larger, write a brief for a fresh subagent, and name the files, so that it
+starts with a small context.
 
 **When the code contradicts the plan, stop.** Change the plan first, then continue. If the
 change affects what the person gets, ask them before you go on.

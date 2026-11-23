@@ -108,7 +108,8 @@ Change these together: the tools in `src/mcp/tools/`, their tests in `test/mcp/`
 - HTTP route: add it to a router in `src/http/routes/`, mount it in `src/http/index.ts` before
   the catch-all, and throw `HttpError` for failures. Add `requireIdentity()` for a private route.
 - Web page: add a module in `src/web/routes/` and an entry in `src/web/routes.ts`. On a private
-  site, it needs an Access identity unless its pattern is in `PUBLIC_PATHS` in `src/web/root.tsx`.
+  site, it needs an Access identity unless its pattern is in `PUBLIC_PATHS` in
+  `src/web/public-paths.ts`, which ships empty. A page that replaces the home page is private too.
 - Add tests in `test/http/` or `test/web/`.
 
 <!-- @starter:end -->

@@ -19,20 +19,25 @@ first things that the person asked for.
   asks for more along the way, add it to the brief.
 - **Read every run's whole output.** Don't cut it with `tail`, `head`, or a filter. The steps,
   the summary, and the final block all matter, and a cut output loses some of them.
-- **Answer from the interview.** Never ask the person a question that the interview already
-  answered. Record the answer with `node scripts/setup.ts answer` and go on. An answer counts
-  only when the person gave it. What you infer from their other answers is a recommendation, so
-  offer it and let them choose. This matters most for how people sign in.
-- **One question at a time.** Ask each question that the script prints through your structured
-  question tool when you have one, such as `AskUserQuestion` in Claude Code. Offer the script's
-  options and mark its suggested answer. Without such a tool, ask the one question in a message
-  and wait for the answer. Never ask two questions at once. When a question has no suggested
-  answer and the person's request doesn't answer it, ask the person. Never invent an answer.
-- **Look it up before you ask.** Sort each open question into fact or intent. A fact is
-  something that the script, a command, the template's code and docs, or the accounts can tell
-  you, so research it yourself and never ask the person for it. The script already reads the
-  accounts, the zones, the `workers.dev` subdomain, and the logins. Intent is what the person
-  wants and prefers, so ask them, and never guess it.
+- **Each open point has one owner.** Sort every open point into one of three kinds:
+  - A **fact** is what the script, a command, the template's code and docs, or the accounts can
+    tell you. Research it yourself, and never ask the person for it. The script already reads the
+    accounts, the zones, the `workers.dev` subdomain, and the logins.
+  - A **product** point is what a user sees or can do, who gets in, and what needs a new paid
+    service or work from the person. The person decides it. Ask, and never guess.
+  - **Engineering** is everything else, such as where data is kept. You decide it, even when no
+    option is clearly best, and you never ask the person to choose.
+- **The person's answers come from the person.** Never ask a question that the person already
+  answered in their own words. Record the answer with `node scripts/setup.ts answer` and go on.
+  What you infer from their other answers isn't an answer. It's a recommendation, so offer it
+  and let them choose. This matters most for how people sign in.
+- **One question at a time.** Ask through your structured question tool when you have one, such
+  as `AskUserQuestion` in Claude Code. Put everything that the person needs into the question
+  itself, offer options, and lead with the one that you recommend. Without such a tool, ask the
+  one question in a message and wait for the answer. Never ask two questions at once.
+- **The script says who answers.** Each `QUESTION` block that the script prints says whether the
+  person or you answer it. Never answer for the person, and never ask the person a question
+  that's yours.
 - **Person tasks one at a time.** Relay each task's instruction and link as the script prints
   them, wait until the person says it's done, then run the script again. The script checks the
   result itself.
@@ -46,23 +51,53 @@ first things that the person asked for.
 
 ## Interview
 
-Start from what the person already said, and ask only what's missing, one question at a time,
-through your question tool. Ask in the person's terms, never in the template's, such as "parts"
-or "sign-in mode".
+The interview has two parts: what the person is building, and what setup needs from them. Start
+from what the person already said, and ask only what's missing, one question at a time. Ask in
+the person's terms, never in the template's, such as "parts" or "sign-in mode".
 
-1. **What are you building, and what should it do for the people who use it?** Keep asking
-   follow-up questions until you can name the first tools or pages that you'd build, and until
-   you're 95% sure that the person would read your description of the result and say "yes,
-   that's it". To test that, draft the [playback](#playback): every sentence that you had to
-   guess is a question that you haven't asked yet. A one-line answer always gets a follow-up.
-   Don't skip or rush this question. If an answer leaves open something that the first build
-   depends on, such as where its data comes from, ask about it now. If the person hasn't
-   decided, put it in the brief as an open point.
+### What they're building
+
+Find out what the project does for the people who use it. Keep asking until you can name the
+first tools or pages that you'd build, and until you're 95% sure that the person would read your
+description of what those do and say "yes, that's it". A one-line idea always gets follow-up
+questions. Don't skip or rush this part: each product choice that you don't settle here is one
+that you'd otherwise make for the person while you build.
+
+For the first things to build, cover this ground:
+
+- What each kind of user can do, and where they see it.
+- Who can open or see what: each page, each record, and each link.
+- What happens afterward: what can be changed, undone, or removed, and by whom.
+- What the project sends to people, such as email: when, from whom, and where a reply goes.
+- What happens in the cases that the idea didn't mention: nothing is there yet, the input is
+  wrong, someone tries twice, or someone drops out.
+- How it looks, when it has pages.
+- What stays out.
+
+Ask a product question when you can picture the person choosing either way and caring which.
+When any reasonable person would accept your choice and it's cheap to change later, such as a
+length limit, make the choice and note it as a default. The [playback](#playback) shows the
+person your defaults before anything is built. Never ask a question whose every answer leads to
+the same product, and never ask about a fact or an engineering choice.
+
+To test whether you're done, draft the playback. Each line about what a user sees or can do
+must come from the person or from your defaults. A line that comes from neither is a question
+that you haven't asked yet. If the person says that they haven't decided something, record it as
+an open point. An open point is never a question that you didn't ask.
+
+### What setup needs from the person
+
+Ask each of these unless the person already said it in their own words. Many of them come up
+while you ask what the person is building.
+
+1. **What's it called?** The name that people see. Suggest one from the idea, and suggest the
+   project name that follows from it, such as `acme-tools` for Acme Tools, in the same question.
+   [Bootstrap](#bootstrap) step 2 has the rules for a project name.
 2. **Who uses it?** Only you, named people or a team, or anyone.
 3. **How do they use it?** From an AI assistant such as Claude, in a browser, or both.
-4. **If from an assistant, how do people sign in?** Always ask this question, even when the
-   other answers seem to settle it. Never choose for the person, and never assume GitHub. Offer
-   these three ways, and recommend the first unless one of the notes applies:
+4. **If from an assistant, how do people sign in?** Never choose for the person, and never
+   assume GitHub, even when the other answers point one way. Offer these three ways, and
+   recommend the first unless one of the notes applies:
    - **With their email address, through Cloudflare Access.** It admits only the people or the
      email domains that the person names. It needs no app registration and no secrets.
    - **With their GitHub account.** Recommend it only when the tools must act on each user's
@@ -70,33 +105,42 @@ or "sign-in mode".
      everyone. It needs a GitHub OAuth app, which the person registers during setup.
    - **With one shared token.** Recommend it only for a single client of the person's own, such
      as one script.
-5. **If in a browser, who may open the web app?** Anyone, or only the people that the person
-   names. Ask it, even when question 2 seems to answer it, because a project can have a public
-   web app next to tools that need a sign-in.
+5. **If in a browser, who can open each page?** The answer depends on what's being built, so
+   ask it about the pages from the first part: which ones anyone can open, and which ones need a
+   sign-in. A project can have a sign-up page for anyone next to pages for named people only.
 6. **Where does it run?** On a domain that's on Cloudflare, or on the free `workers.dev` address.
 
-When the person has no preference on where data is kept, recommend KV storage for per-user
-settings and simple lookups. Setup creates it when the project has an MCP endpoint. Recommend a
-D1 database when the project keeps records that it filters, relates, or totals, such as requests
-that it lists by status. When it isn't clear which one fits, ask the person. Name in the brief
-only what setup creates or what the person asked for.
+### What you decide
 
-Turn the answers into the script's answers with this table:
+These follow from the interview. Decide them yourself, and never ask the person to choose:
 
-| From the interview                                          | Script answers                                                                                        |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| An assistant only, a browser only, or both                  | `parts`: `mcp`, `web`, or `mcp,web`                                                                   |
-| The person chose sign-in through Cloudflare Access          | `sign-in`: `access`, and `who-may-sign-in`: their email addresses, an email domain, or both           |
-| The person chose sign-in with GitHub                        | `sign-in`: `github`, and `allowed-github`: the users' GitHub logins, or `*` for anyone                |
-| The person chose one shared token                           | `sign-in`: `bearer`                                                                                   |
-| The person said that anyone may open the web app            | `web-access`: `public`                                                                                |
-| The person said that only named people may open the web app | `web-access`: `private`, and `who-may-sign-in`: their email addresses, an email domain, or both       |
-| Where data is kept                                          | `database`: `d1` for a D1 database, or `none`                                                         |
-| A domain on Cloudflare                                      | `hostname`: a hostname on that zone, such as `tools.example.com`                                      |
-| The free address                                            | `hostname`: `workers.dev`                                                                             |
-| What they're building                                       | `brief`, `description`: one sentence that starts with a verb, and `display-name`: up to 60 characters |
-| The person didn't say that the code is open source          | `license`: `none`                                                                                     |
-| The code is open source                                     | `license`: ask whether `mit-0` or `mit`                                                               |
+- **Where data is kept.** Use KV storage for per-user settings and simple lookups. Setup creates
+  it when the project has an MCP endpoint. Use a D1 database when the project keeps records that
+  it filters, relates, or totals, such as requests that it lists by status.
+- **Which parts the project keeps,** from how people use it.
+- **The wording** of the brief and the description.
+- **The license.** It's `none` unless the person said that the code is open source. If they said
+  so and named no license, that choice is theirs, so ask whether they want `mit-0` or `mit`.
+
+Name in the brief only what setup creates or what the person asked for.
+
+Turn the interview into the script's answers with this table:
+
+| From the interview                                     | Script answers                                                                                  |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| An assistant only, a browser only, or both             | `parts`: `mcp`, `web`, or `mcp,web`                                                             |
+| The person chose sign-in through Cloudflare Access     | `sign-in`: `access`, and `who-may-sign-in`: their email addresses, an email domain, or both     |
+| The person chose sign-in with GitHub                   | `sign-in`: `github`, and `allowed-github`: the users' GitHub logins, or `*` for anyone          |
+| The person chose one shared token                      | `sign-in`: `bearer`                                                                             |
+| The person said that anyone may open every page        | `web-access`: `public`                                                                          |
+| The person said that at least one page needs a sign-in | `web-access`: `private`, and `who-may-sign-in`: their email addresses, an email domain, or both |
+| What the project keeps, which you decide               | `database`: `d1` for a D1 database, or `none`                                                   |
+| A domain on Cloudflare                                 | `hostname`: a hostname on that zone, such as `tools.example.com`                                |
+| The free address                                       | `hostname`: `workers.dev`                                                                       |
+| What the person called it                              | `display-name`: up to 60 characters                                                             |
+| What they're building, in your words                   | `brief`, and `description`: one sentence that starts with a verb                                |
+| The person didn't say that the code is open source     | `license`: `none`                                                                               |
+| The person said that the code is open source           | `license`: the license that they named, or ask whether `mit-0` or `mit`                         |
 
 The script enforces these rules, so recommend a combination that keeps them:
 
@@ -108,6 +152,10 @@ The script enforces these rules, so recommend a combination that keeps them:
   whole domain may sign in or only those people.
 - With `access` sign-in, MCP sign-in doesn't work on pull request Previews.
 - A custom hostname must be on a zone in the person's Cloudflare account.
+- A private web app puts every page behind Cloudflare Access in production. A page that anyone
+  may open on such a site needs two things in the first build: its pattern in `PUBLIC_PATHS`,
+  and its path in the Access bypass application, as `docs/web.md` describes under "The public
+  list". Note those pages in `.plans/first-build.md`.
 
 ### Playback
 
@@ -115,10 +163,19 @@ Write the **brief**: two to four sentences, in your words, that say what the pro
 its users and name the first tools or pages to build. It's 40 to 800 characters, and it names only
 technology that setup creates or that the person asked for.
 
-Before you create anything, tell the person in a few plain sentences what you'll set up and why
-each choice follows from what they said, and read them the brief. Name how people sign in, who
-may open the web app, and where data is kept, as the person chose them. Then ask one question: is
-this right? On a no, go back to the interview question that their answer changes.
+Before you create anything, tell the person in a few plain sentences what the project will do
+and what you'll set up, and read them the brief. The playback has:
+
+- The decisions that the person made, as they made them: what it's called, how people sign in,
+  and who can open which pages.
+- The defaults that you chose, one line each, so that the person can change any of them.
+- What you decided yourself that creates something, such as where data is kept, named as your
+  own choice.
+- What stays out.
+
+Each line about what a user sees or can do comes from the person or from your defaults. Then ask
+one question: is this right? On a no, go back to the part of the interview that their answer
+changes.
 
 ## Bootstrap
 
@@ -135,8 +192,9 @@ this right? On a no, go back to the interview question that their answer changes
    script installs the dependencies in its install step. If `gh auth status` reports no login, ask
    the person to run `gh auth login` in their terminal. Then check again.
 
-2. Ask for the **project name**, and suggest one from the brief: lowercase letters, digits, and
-   hyphens, starting with a letter, at most 40 characters, such as `acme-tools`. It names the
+2. Settle the **project name**: lowercase letters, digits, and hyphens, starting with a letter,
+   at most 40 characters, such as `acme-tools`. If the person agreed to one in the interview, use
+   it. Otherwise ask for it, and suggest one from the name that they gave the project. It names the
    repository, the Worker, the KV namespaces, and the D1 databases. Previews prepend
    `pr-<number>-` to it, which is why it stays short.
 
@@ -162,15 +220,16 @@ this right? On a no, go back to the interview question that their answer changes
 
 5. From the project folder, record what the interview settled, in this order, and skip each key
    that doesn't apply to the choices: `brief`, `display-name`, `description`, `parts`, `sign-in`,
-   `web-access`, `who-may-sign-in`, `database`, `allowed-github`, `hostname`, and `license` when
-   the person named one. For example:
+   `web-access`, `who-may-sign-in`, `database`, `allowed-github`, `hostname`, and `license`. For
+   example:
 
    ```sh
    node scripts/setup.ts answer brief "Tracks support requests for the Acme team. First, build a tool that lists open requests."
    ```
 
 6. Write what the interview settled to `.plans/first-build.md` in the project folder: the goal,
-   each decision that the person made, in their words where you can, and each open point. The
+   each decision that the person made, in their words where you can, each default that you
+   chose, and each open point. The
    brief is short, and this file holds the rest, so that the build after setup doesn't depend on
    what this session remembers. Git ignores `.plans/`, so the file isn't a change to the project.
 
@@ -189,15 +248,15 @@ Each run first runs the work steps that are due, one after another. Each step pr
 heading, its commands, and its result. The run then ends with one block, whose first line names
 what comes next and whose last line starts with `Next:`.
 
-| Block                      | What you do                                                                                                                                                                                                            |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `QUESTION: <key>`          | If the interview settled it, record that answer. Otherwise ask the person. Record the answer with `node scripts/setup.ts answer <key> <value>`, quoting a value that has spaces, and run the script again.             |
-| `TASK: <id>`               | Relay the instruction and the link. Wait until the person says it's done, and run the script again. For `mcp-client`, record `done`, `not-now`, or `failed` with `answer`. For `renovate`, record `done` or `not-now`. |
-| `WAIT: <id>`               | Run the script again in about a minute. It's waiting on a GitHub Actions run, whose URL it prints. If the same run is still waiting after 30 minutes, report its URL to the person.                                    |
-| `DONE`                     | Relay the report, then run `node scripts/setup.ts finish`.                                                                                                                                                             |
-| `REFUSED: <command>`       | Read the reason, fix it, and run the command again.                                                                                                                                                                    |
-| `FAILED: <command>`        | A check of GitHub or Cloudflare failed, so the script stopped instead of guessing. Fix the cause it names, such as a missing login, and run it again.                                                                  |
-| `Result: the step failed.` | The run exits with code 1. Read the step's output. Fix what you can and run the script again. If only the person can fix it, relay the result and wait.                                                                |
+| Block                      | What you do                                                                                                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `QUESTION: <key>`          | The block says who answers. If it's you, decide from the interview. If it's the person and they already said it, use that. Otherwise ask them. Record the answer with `node scripts/setup.ts answer <key> <value>`, quoting a value that has spaces, and run the script again. |
+| `TASK: <id>`               | Relay the instruction and the link. Wait until the person says it's done, and run the script again. For `mcp-client`, record the person's `done`, `not-now`, or `failed` with `answer`. For `renovate`, record their `done` or `not-now`. Never answer a task for them.        |
+| `WAIT: <id>`               | Run the script again in about a minute. It's waiting on a GitHub Actions run, whose URL it prints. If the same run is still waiting after 30 minutes, report its URL to the person.                                                                                            |
+| `DONE`                     | Relay the report, then run `node scripts/setup.ts finish`.                                                                                                                                                                                                                     |
+| `REFUSED: <command>`       | Read the reason, fix it, and run the command again.                                                                                                                                                                                                                            |
+| `FAILED: <command>`        | A check of GitHub or Cloudflare failed, so the script stopped instead of guessing. Fix the cause it names, such as a missing login, and run it again.                                                                                                                          |
+| `Result: the step failed.` | The run exits with code 1. Read the step's output. Fix what you can and run the script again. If only the person can fix it, relay the result and wait.                                                                                                                        |
 
 A run that ends with the `summary` step stops there. Relay the summary of what setup creates in
 GitHub and Cloudflare to the person, then run the script again. Nothing has changed in either
@@ -292,7 +351,8 @@ From here, work the way that the **How to work** section of `AGENTS.md` describe
 code before the plan exists, is reviewed, and has the person's yes. For the first build:
 
 1. **Investigate** from the brief and `.plans/first-build.md`, not from what you remember of the
-   interview. The interview covered the goal, so ask the person only what's still open. Research
+   interview. The interview covered the goal, so ask the person only the product questions that
+   are still open. Research
    the facts in the project's code now that it exists.
 2. **Plan** in `.plans/first-build.md`, under the notes from the interview. The plan covers what
    happens to the examples, which go and don't stay next to the new work:
@@ -300,8 +360,8 @@ code before the plan exists, is reviewed, and has the person's yes. For the firs
      replace `example_echo_message`, `account_record_visit`, and the example `profile` scope
      where the new tools don't need it. Then follow "Add an MCP tool" for each tool.
    - With a web app, the first page replaces the example home page in `src/web/routes/home.tsx`.
-     Follow "Add a route" for each other page. On a private site, the plan says for each page
-     whether someone can open it without signing in.
+     Follow "Add a route" for each other page. The plan says for each page who can open it, as
+     the person decided. If they didn't say, ask.
 3. **Review the plan, play it back, implement, and deliver**, as `docs/workflow.md` describes
    each phase. Work on a branch, such as `feat/first-tools`, and open the pull request with
    `gh pr create`. Merging deploys to production, so leave the merge to the person.

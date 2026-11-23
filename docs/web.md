@@ -75,7 +75,9 @@ and `blog/:slug` both match `route("blog/:slug", ...)`, whose pattern React Rout
 
 In production, the Access application covers the whole hostname, so Access asks for a login
 before the Worker sees a request, even for a listed page. The list matters where the Worker's
-check is the only gate, such as on a Preview or on a hostname that Access doesn't cover.
+check is the only gate, such as on a Preview or on a hostname that Access doesn't cover. To open
+a listed page to everyone in production too, add its path to the destinations of the bypass
+application, which [Cloudflare Access applications](#cloudflare-access-applications) describes.
 
 ### Where the identity comes from
 

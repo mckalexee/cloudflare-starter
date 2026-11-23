@@ -28,8 +28,8 @@ The web app is React Router 8 behind Hono, and Cloudflare Access can make it pri
 Make a change that one sentence describes fully right away, and run `pnpm verify`. Take anything
 larger through these phases, in order. [docs/workflow.md](docs/workflow.md) has the detail.
 
-1. **Investigate.** Research facts yourself. Ask the person about intent, one question at a time,
-   until you're 95% sure of what they want.
+1. **Investigate.** Research facts and decide engineering yourself. Ask the person what users see
+   or can do, one question at a time, until you're 95% sure of what they want.
 2. **Plan.** Write the plan to `.plans/<topic>.md` before you write any code, with each task as a
    brief for a subagent.
 3. **Review the plan.** Fresh subagents find what it missed. Verify each finding yourself, and

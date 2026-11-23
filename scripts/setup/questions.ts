@@ -284,7 +284,10 @@ export const QUESTIONS: QuestionSpec[] = [
     decides: "person",
     store: "shared",
     prompt: "Who can open the web app?",
-    help: noHelp,
+    help: () => [
+      "Answer private when at least one page needs a sign-in. On a private site, the first build",
+      "opens the pages that the person said anyone may see.",
+    ],
     options: () => [
       { value: "public", label: "Everyone. The web app is public." },
       { value: "private", label: "Only the people you name. Cloudflare Access protects it." },

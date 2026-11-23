@@ -1,7 +1,7 @@
 // Formats what a run prints. A coding agent reads the output and relays parts of it to a person,
 // so every action has the same shape: a first line that names the kind of action and its key,
 // the body, and a last line that starts with "Next:" and says what the agent does after it.
-import { devPort, hasMcp, host, signIn } from "./derive.ts";
+import { devPort, hasD1, hasMcp, host, signIn } from "./derive.ts";
 import { question } from "./questions.ts";
 import { STEPS } from "./steps.ts";
 import { task } from "./tasks.ts";
@@ -177,6 +177,11 @@ export function renderDone(ctx: Context, action: Extract<Action, { kind: "done" 
   if (hasMcp(ctx.answers)) {
     lines.push(
       `- KV namespaces: ${facts.kvNamespaces.production ?? "none"} for production, ${facts.kvNamespaces.preview ?? "none"} for Previews`,
+    );
+  }
+  if (hasD1(ctx.answers)) {
+    lines.push(
+      `- D1 databases: ${name}-db (${facts.d1Databases.production ?? "none"}) for production, ${name}-db-preview (${facts.d1Databases.preview ?? "none"}) for Previews`,
     );
   }
   if (facts.accessApps.allow !== null) {

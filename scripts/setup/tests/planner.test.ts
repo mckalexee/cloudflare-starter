@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 // `describe()` and `test()` from `node:test` return promises that the test runner awaits.
 /* oxlint-disable typescript/no-floating-promises */
 
-import { accessUsed, hasMcp, signIn } from "../derive.ts";
+import { accessUsed, hasD1, hasMcp, signIn } from "../derive.ts";
 import { openChecks, plan } from "../planner.ts";
 import { TASKS } from "../tasks.ts";
 import type { Context } from "../types.ts";
@@ -60,6 +60,7 @@ const NO_ACCOUNT_QUESTIONS = new Set([
   "web-access",
   "who-may-sign-in",
   "oauth-previews",
+  "database",
   "license",
 ]);
 
@@ -199,14 +200,30 @@ const BREAKERS: Breaker[] = [
   {
     name: "an unpruned tree",
     applies: (ctx) =>
-      !(hasMcp(ctx.answers) && ctx.answers.parts === "mcp,web" && signIn(ctx.answers) === "github"),
-    reopen: (ctx) => (ctx.repo.tree = { parts: ["mcp", "web"], signIn: "github", pristine: true }),
+      !(
+        hasMcp(ctx.answers) &&
+        ctx.answers.parts === "mcp,web" &&
+        signIn(ctx.answers) === "github" &&
+        hasD1(ctx.answers)
+      ),
+    reopen: (ctx) =>
+      (ctx.repo.tree = { parts: ["mcp", "web"], signIn: "github", d1: true, pristine: true }),
+  },
+  {
+    name: "D1 files left in a project without D1",
+    applies: (ctx) => !hasD1(ctx.answers),
+    reopen: (ctx) => (ctx.repo.tree.d1 = true),
   },
   { name: "no install", applies: always, reopen: (ctx) => (ctx.repo.installed = false) },
   {
     name: "a missing KV namespace",
     applies: (ctx) => hasMcp(ctx.answers),
     reopen: (ctx) => (ctx.facts.kvNamespaces.preview = null),
+  },
+  {
+    name: "a missing D1 database",
+    applies: (ctx) => hasD1(ctx.answers),
+    reopen: (ctx) => (ctx.facts.d1Databases.production = null),
   },
   {
     name: "an Access policy that differs from who may sign in",
@@ -307,6 +324,28 @@ const BREAKERS: Breaker[] = [
   },
 ];
 
+describe("the D1 databases", () => {
+  test("exist and are recorded before the config step writes their IDs and the push deploys", () => {
+    for (const name of ["mcp access", "both github private"]) {
+      const { actions, ctx } = walk(SCENARIOS[name] ?? {});
+      const at = (id: string) =>
+        actions.findIndex((action) => action.kind === "step" && action.id === id);
+      const created = at("d1-databases");
+      assert.ok(created > at("kv-namespaces") || !hasMcp(ctx.answers), name);
+      assert.ok(created !== -1 && created < at("config") && at("config") < at("push"), name);
+      assert.deepEqual(
+        [ctx.resources.d1Production, ctx.resources.d1Preview],
+        ["d1-production", "d1-preview"],
+      );
+    }
+  });
+
+  test("a project without D1 creates no database", () => {
+    const { actions } = walk(SCENARIOS["mcp bearer"] ?? {});
+    assert.ok(!actions.some((action) => action.kind === "step" && action.id === "d1-databases"));
+  });
+});
+
 describe("done means no open check", () => {
   for (const [scenarioName, scenario] of Object.entries(SCENARIOS)) {
     test(`${scenarioName}: reopening any one check takes done away`, () => {
@@ -352,6 +391,7 @@ describe("fixture mode", () => {
   const remoteSteps = [
     "workers-subdomain",
     "kv-namespaces",
+    "d1-databases",
     "access-otp",
     "access-apps",
     "worker-secrets",

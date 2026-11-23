@@ -38,6 +38,7 @@ export const EMPTY_FACTS: RemoteFacts = {
   zones: [],
   accessOrganization: null,
   kvNamespaces: { production: null, preview: null },
+  d1Databases: { production: null, preview: null },
   accessApps: { allow: null, bypass: null },
   githubOAuth: { production: null, preview: null },
   apiToken: { saved: false, valid: null },
@@ -189,6 +190,14 @@ export function renameLeftovers(root: string): string[] {
   });
 }
 
+const D1_FILES = [
+  "wrangler.preview-migrations.jsonc",
+  "migrations",
+  "docs/d1.md",
+  "test/d1",
+  "test/helpers/d1.ts",
+];
+
 /** What the working tree says about the prune step. */
 export function readTree(root: string): TreeFacts {
   const parts: Part[] = [];
@@ -209,7 +218,10 @@ export function readTree(root: string): TreeFacts {
       signIn = "bearer";
     }
   }
-  return { parts, signIn, pristine: parts.length === 2 && signIn === "github" };
+  // `--database none` deletes every one of these, so any one that remains means the D1 database
+  // is still in the tree.
+  const d1 = D1_FILES.some((file) => exists(root, file));
+  return { parts, signIn, d1, pristine: parts.length === 2 && signIn === "github" && d1 };
 }
 
 function sha256(text: string | Uint8Array): string {

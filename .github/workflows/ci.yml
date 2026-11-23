@@ -64,41 +64,43 @@ jobs:
         # `answers` holds the scenario's answers as `key=value` pairs, over the shared answers in
         # the "Run the setup loop" step. `leftovers` names what the finished project must not
         # mention: a part (`web` or `mcp`), the Access identity check (`access`), the OAuth
-        # sign-in (`oauth`), or the setup script (`setup`).
+        # sign-in (`oauth`), the D1 database (`d1`), or the setup script (`setup`).
         include:
           - name: MCP only with GitHub OAuth
             answers: parts=mcp sign-in=github
-            leftovers: web access setup
+            leftovers: web access d1 setup
           - name: MCP only with a bearer token
             answers: parts=mcp sign-in=bearer
-            leftovers: web access oauth setup
+            leftovers: web access oauth d1 setup
           - name: MCP only with Access sign-in
-            answers: parts=mcp sign-in=access
+            answers: parts=mcp sign-in=access database=d1
             leftovers: web oauth setup
           - name: a public web app only
             answers: parts=web web-access=public
-            leftovers: mcp setup
+            leftovers: mcp d1 setup
           - name: a private web app only
             answers: parts=web web-access=private
-            leftovers: mcp setup
+            leftovers: mcp d1 setup
           - name: both parts with GitHub OAuth and a public web app
             answers: parts=mcp,web sign-in=github web-access=public
-            leftovers: setup
+            leftovers: d1 setup
           - name: both parts with GitHub OAuth and a private web app
-            answers: parts=mcp,web sign-in=github web-access=private hostname=tools.example.com
+            answers: >-
+              parts=mcp,web sign-in=github web-access=private hostname=tools.example.com
+              database=d1
             leftovers: setup
           - name: both parts with a bearer token and a public web app
             answers: parts=mcp,web sign-in=bearer web-access=public
-            leftovers: oauth setup
+            leftovers: oauth d1 setup
           - name: both parts with a bearer token and a private web app
             answers: parts=mcp,web sign-in=bearer web-access=private hostname=tools.example.com
-            leftovers: oauth setup
+            leftovers: oauth d1 setup
           - name: both parts with Access sign-in and a public web app
             answers: parts=mcp,web sign-in=access web-access=public
-            leftovers: oauth setup
+            leftovers: oauth d1 setup
           - name: both parts with Access sign-in and a private web app
             answers: parts=mcp,web sign-in=access web-access=private
-            leftovers: oauth setup
+            leftovers: oauth d1 setup
     env:
       ANSWERS: ${{ matrix.answers }}
     steps:
@@ -144,8 +146,10 @@ jobs:
             [hostname]="workers.dev"
             [allowed-github]="octocat"
             [oauth-previews]="no"
+            [database]="none"
             [license]="mit-0"
-            # The fixture's KV namespaces exist before setup records them, so the loop adopts them.
+            # The fixture's KV namespaces and D1 databases exist before setup records them, so the
+            # loop adopts them.
             [existing-resources]="earlier-attempt"
             [mcp-client]="not-now"
             [renovate]="not-now"
@@ -237,7 +241,9 @@ jobs:
       # the `oauth_configuration` field, and the `oauth-protected-resource` paths, so the `oauth`
       # pattern skips exactly those. Every project ignores `.playwright-mcp/`, which a browser tool
       # writes, so the `mcp` pattern skips that name. A match means a file needs a marker or a swap
-      # in `scripts/prune.ts`, or a text edit in its `--finish`.
+      # in `scripts/prune.ts`, or a text edit in its `--finish`. `docs/deploy.md` in a project
+      # without D1 keeps a recipe for adding D1 by hand, which names the D1 config, so the `d1`
+      # check skips that recipe's lines and nothing else.
       - name: Check for leftovers of what the scenario dropped
         env:
           LEFTOVERS: ${{ matrix.leftovers }}
@@ -258,6 +264,11 @@ jobs:
                 pattern+='|github (account|login|sign)|sign in with github|signed-in (user|caller)'
                 pattern+='|authorization code'
                 ;;
+              d1)
+                pattern='d1_databases|preview_db|db:migrate|preview-migrations|d1\.md'
+                pattern+='|(test|helpers)/d1|test_migrations|d1migrations|wrangler d1'
+                pattern+='|migrations_dir|env\.db\b'
+                ;;
               setup)
                 pattern='scripts/setup|setup\.(local\.)?json|setup:(begin|end)|SETUP\.md'
                 pattern+='|prune\.ts|@starter:'
@@ -269,14 +280,25 @@ jobs:
             esac
             # grep exits 1 when nothing matches, and 2 when it fails, such as on a bad pattern.
             status=0
-            grep -rniIP "$pattern" . \
+            matches=$(grep -rniIP "$pattern" . \
               --exclude-dir={.git,node_modules,build,dist,.wrangler,.react-router} \
-              --exclude={pnpm-lock.yaml,worker-configuration.d.ts,.dev.vars} || status=$?
-            if [ "$status" = 0 ]; then
-              echo "::error::The scenario leaves the $leftover matches above behind."
-              exit 1
-            elif [ "$status" != 1 ]; then
+              --exclude={pnpm-lock.yaml,worker-configuration.d.ts,.dev.vars}) || status=$?
+            if [ "$status" -gt 1 ]; then
               echo "::error::grep failed on the $leftover pattern."
+              exit 1
+            fi
+            if [ "$leftover" = d1 ] && [ -n "$matches" ] && [ -f docs/deploy.md ]; then
+              # The recipe is one bullet: its first line, then indented or empty lines.
+              recipe=$(awk '/^- \*\*D1:\*\* Previews that bind the same/ { inside = 1; print NR; next }
+                inside && /^[^ ]/ { inside = 0 }
+                inside { print NR }' docs/deploy.md | paste -sd '|' -)
+              if [ -n "$recipe" ]; then
+                matches=$(grep -vE "^\./docs/deploy\.md:($recipe):" <<< "$matches" || true)
+              fi
+            fi
+            if [ -n "$matches" ]; then
+              printf '%s\n' "$matches"
+              echo "::error::The scenario leaves the $leftover matches above behind."
               exit 1
             fi
           done

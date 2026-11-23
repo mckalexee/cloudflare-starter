@@ -75,10 +75,11 @@ or "sign-in mode".
    web app next to tools that need a sign-in.
 6. **Where does it run?** On a domain that's on Cloudflare, or on the free `workers.dev` address.
 
-When the person has no preference on a technical choice, such as where data is kept, recommend
-what the project already has: KV storage, which setup creates when the project has an MCP
-endpoint. Don't name anything in the brief that setup doesn't create, such as a D1 database,
-unless the person asked for it.
+When the person has no preference on where data is kept, recommend KV storage for per-user
+settings and simple lookups. Setup creates it when the project has an MCP endpoint. Recommend a
+D1 database when the project keeps records that it filters, relates, or totals, such as requests
+that it lists by status. When it isn't clear which one fits, ask the person. Name in the brief
+only what setup creates or what the person asked for.
 
 Turn the answers into the script's answers with this table:
 
@@ -90,6 +91,7 @@ Turn the answers into the script's answers with this table:
 | The person chose one shared token                           | `sign-in`: `bearer`                                                                                   |
 | The person said that anyone may open the web app            | `web-access`: `public`                                                                                |
 | The person said that only named people may open the web app | `web-access`: `private`, and `who-may-sign-in`: their email addresses, an email domain, or both       |
+| Where data is kept                                          | `database`: `d1` for a D1 database, or `none`                                                         |
 | A domain on Cloudflare                                      | `hostname`: a hostname on that zone, such as `tools.example.com`                                      |
 | The free address                                            | `hostname`: `workers.dev`                                                                             |
 | What they're building                                       | `brief`, `description`: one sentence that starts with a verb, and `display-name`: up to 60 characters |
@@ -114,9 +116,9 @@ its users and name the first tools or pages to build. It's 40 to 800 characters,
 technology that setup creates or that the person asked for.
 
 Before you create anything, tell the person in a few plain sentences what you'll set up and why
-each choice follows from what they said, and read them the brief. Name how people sign in and
-who may open the web app, as the person chose them. Then ask one question: is this right? On a
-no, go back to the interview question that their answer changes.
+each choice follows from what they said, and read them the brief. Name how people sign in, who
+may open the web app, and where data is kept, as the person chose them. Then ask one question: is
+this right? On a no, go back to the interview question that their answer changes.
 
 ## Bootstrap
 
@@ -134,8 +136,9 @@ no, go back to the interview question that their answer changes.
    the person to run `gh auth login` in their terminal. Then check again.
 
 2. Ask for the **project name**, and suggest one from the brief: lowercase letters, digits, and
-   hyphens, starting with a letter, at most 40 characters, such as `acme-tools`. It names the repository, the Worker, and the KV
-   namespaces. Previews prepend `pr-<number>-` to it, which is why it stays short.
+   hyphens, starting with a letter, at most 40 characters, such as `acme-tools`. It names the
+   repository, the Worker, the KV namespaces, and the D1 databases. Previews prepend
+   `pr-<number>-` to it, which is why it stays short.
 
 3. Ask for the **GitHub owner**: the person's account or one of their organizations. Suggest the
    login that `gh api user --jq .login` prints, and list the organizations from
@@ -159,8 +162,8 @@ no, go back to the interview question that their answer changes.
 
 5. From the project folder, record what the interview settled, in this order, and skip each key
    that doesn't apply to the choices: `brief`, `display-name`, `description`, `parts`, `sign-in`,
-   `web-access`, `who-may-sign-in`, `allowed-github`, `hostname`, and `license` when the person
-   named one. For example:
+   `web-access`, `who-may-sign-in`, `database`, `allowed-github`, `hostname`, and `license` when
+   the person named one. For example:
 
    ```sh
    node scripts/setup.ts answer brief "Tracks support requests for the Acme team. First, build a tool that lists open requests."
@@ -224,16 +227,16 @@ token included, is in the person's block. These are all the person tasks:
 When the person says that MCP sign-in failed, record `answer mcp-client failed`. The next run names
 the next check.
 
-If the Cloudflare account already has a KV namespace or a Worker with the project's name, which
-setup didn't create, the script asks whether it's from an earlier attempt at this setup. Ask the
-person. Setup uses it only on a yes.
+If the Cloudflare account already has a KV namespace, a D1 database, or a Worker with the
+project's name, which setup didn't create, the script asks whether it's from an earlier attempt
+at this setup. Ask the person. Setup uses it only on a yes.
 
 These answers can change at any time, and the next run applies them: `description`, which
 changes the repository description and the MCP server's first sentence, `who-may-sign-in`, which
 updates the Access policy, `allowed-github`, and `display-name`, which changes `APP_NAME` but not
-the docs that the rename step already wrote. The parts, the sign-in mode, and the hostname can't
-change once a step used them, and neither can the project name or the owner, which come from the
-`origin` remote. The script says so when you try.
+the docs that the rename step already wrote. The parts, the sign-in mode, the database, and the
+hostname can't change once a step used them, and neither can the project name or the owner,
+which come from the `origin` remote. The script says so when you try.
 
 ## Two ways to stop
 

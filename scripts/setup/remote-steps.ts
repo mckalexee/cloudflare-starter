@@ -228,6 +228,28 @@ export const REMOTE_STEPS = {
     }
     record(ctx, ids);
   },
+  "d1-databases": (ctx: Context) => {
+    requireAccount(ctx);
+    const { name } = ctx.repo.origin;
+    const { production, preview } = ctx.facts.d1Databases;
+    // Outside the project folder, Wrangler neither reads nor edits `wrangler.jsonc`. The config
+    // step writes the IDs.
+    if (production === null) {
+      wrangler(ctx, ["d1", "create", `${name}-db`], { cwd: tmpdir() });
+    }
+    if (preview === null) {
+      wrangler(ctx, ["d1", "create", `${name}-db-preview`], { cwd: tmpdir() });
+    }
+    const created = REAL_PROBES.d1Databases(ctx);
+    const ids: Resources = {};
+    if (production === null && created.production !== null) {
+      ids.d1Production = created.production;
+    }
+    if (preview === null && created.preview !== null) {
+      ids.d1Preview = created.preview;
+    }
+    record(ctx, ids);
+  },
   "access-otp": (ctx: Context) => {
     const body = JSON.stringify({ name: "One-time PIN", type: "onetimepin", config: {} });
     cf(

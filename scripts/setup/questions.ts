@@ -8,6 +8,7 @@ import {
   accountLabel,
   conflicts,
   customDomain,
+  hasD1,
   hasMcp,
   hasWeb,
   list,
@@ -70,7 +71,7 @@ const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 /** Whether the working tree holds exactly what the answers select, so the prune step is done. */
 export function treeMatches(tree: TreeFacts, answers: Answers): boolean {
   const wanted = (answers.parts ?? "").split(",").toSorted().join(",");
-  if (tree.parts.toSorted().join(",") !== wanted) {
+  if (tree.parts.toSorted().join(",") !== wanted || tree.d1 !== hasD1(answers)) {
     return false;
   }
   return !hasMcp(answers) || tree.signIn === signIn(answers);
@@ -104,6 +105,8 @@ function accountUsed(ctx: Context): string | undefined {
   if (
     facts.kvNamespaces.production !== null ||
     facts.kvNamespaces.preview !== null ||
+    facts.d1Databases.production !== null ||
+    facts.d1Databases.preview !== null ||
     facts.accessApps.allow !== null ||
     facts.workerSecrets !== null ||
     facts.githubSecrets.includes("CLOUDFLARE_ACCOUNT_ID")
@@ -334,6 +337,35 @@ export const QUESTIONS: QuestionSpec[] = [
     },
     invalid: never,
     locked: never,
+  },
+  {
+    key: "database",
+    store: "shared",
+    prompt: "Should the project have a D1 database?",
+    help: () => [
+      "D1 is a SQL database. Setup creates one for production and one that every Preview shares,",
+      "and the workflows apply the migrations in migrations/ to each of them.",
+    ],
+    options: () => [
+      { value: "none", label: "No D1 database. Setup removes the D1 files from the project." },
+      {
+        value: "d1",
+        label: "A D1 database for production and one that every Preview shares, with migrations.",
+      },
+    ],
+    format: "",
+    parse: choice(["none", "d1"]),
+    applies: always,
+    appliesWhen: "always",
+    needed: always,
+    suggest: (ctx) => ({
+      value: "none",
+      reason: hasMcp(ctx.answers)
+        ? "The KV namespace that setup creates for the MCP endpoint covers per-user settings and simple lookups. D1 is for records that the project filters, relates, or totals."
+        : "D1 is for records that the project filters, relates, or totals. A project without such records needs no database.",
+    }),
+    invalid: never,
+    locked: pruneRan,
   },
   {
     key: "cloudflare-account",

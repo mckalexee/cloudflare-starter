@@ -1,11 +1,19 @@
 # Deploys the Worker to production on every push to `main`, after CI passes. You can also run it
 # by hand from the Actions tab.
+# @starter:d1
+#
+# Before the deploy, the job applies the migrations in `migrations/` to the production D1
+# database, so the schema is ready when the new code starts.
+# @starter:end
 #
 # Needs:
 # - Variable `DEPLOY_ENABLED` set to `true`. Until then the deploy job is skipped, so the
 #   template and a new project never deploy before their secrets exist.
 # - Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, in the repository or in the
 #   `production` environment.
+# @starter:d1
+#   The token needs D1 edit permission to apply the migrations.
+# @starter:end
 # - Optional variable `HEALTHCHECK_URL`, the Worker's base URL without a trailing slash, such as
 #   `https://example.com`. When it's set, the job checks that `/healthz` answers 200 with
 #   `{"ok":true}` after the deploy.
@@ -82,6 +90,18 @@ jobs:
       - name: Get the short commit SHA
         id: commit
         run: echo "short-sha=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      # @starter:d1
+      # The new code can depend on the new schema, so the migrations run first. The old code keeps
+      # working meanwhile, because migrations only add tables and columns. Wrangler reads the
+      # build's output config, which keeps the path to `migrations/`. In CI, it applies them
+      # without a confirmation prompt.
+      - name: Apply the D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler d1 migrations apply DB --remote
+      # @starter:end
 
       # With no `wranglerVersion`, the action runs the Wrangler from package.json, which is the
       # version CI tested. The message is fixed text, because a commit message interpolated into

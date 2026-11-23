@@ -1,0 +1,16 @@
+// Wrangler configuration for migrating the database that every Preview shares, and for nothing
+// else. `wrangler d1 migrations apply` reads only the top-level `d1_databases` of its config, never
+// `previews.d1_databases`, so the Preview workflow passes this file with `--config`. The binding
+// name `PREVIEW_DB` appears in no other config, so a command that names it without `--config`
+// fails instead of reaching the production database. Keep the name and ID equal to the
+// `previews.d1_databases` entry in `wrangler.jsonc`.
+{
+  "d1_databases": [
+    {
+      "binding": "PREVIEW_DB",
+      "database_name": "cloudflare-starter-db-preview",
+      "database_id": "REPLACE_WITH_PREVIEW_D1_ID",
+      "migrations_dir": "migrations",
+    },
+  ],
+}

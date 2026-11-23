@@ -11,6 +11,7 @@
     "build": "react-router build",
     "preview": "pnpm build && vite preview",
     "typegen": "wrangler types --strict-vars=false && react-router typegen",
+    "db:migrate": "wrangler d1 migrations apply DB --local",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "lint": "pnpm typegen && oxlint",

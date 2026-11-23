@@ -55,6 +55,9 @@ pnpm test:coverage                   # istanbul coverage report in coverage/
 pnpm test test/http/healthz.test.ts  # one test file
 pnpm fmt                             # fix formatting
 pnpm typegen                         # regenerate the generated types
+# @starter:d1
+pnpm db:migrate                      # apply migrations/ to the local D1 database
+# @starter:end
 pnpm tail                            # stream the deployed Worker's live logs
 ```
 
@@ -124,6 +127,20 @@ Change these together: the tools in `src/mcp/tools/`, their tests in `test/mcp/`
 5. Tell the user to set the production secret before the next deploy. `wrangler deploy` fails
    while a required secret is missing. [docs/deploy.md](docs/deploy.md) covers Preview secrets.
 
+<!-- @starter:d1 -->
+
+### Add a migration
+
+1. Run `pnpm exec wrangler d1 migrations create DB <name>`, and write the SQL in the new file.
+2. Run `pnpm db:migrate` to apply it to the local database that `pnpm dev` reads. Tests apply it
+   on their own.
+3. Add tests that use the new schema through `env.DB`.
+
+A pull request applies it to the shared Previews database before its Preview deploys, and a merge
+to `main` applies it to production before the deploy.
+
+<!-- @starter:end -->
+
 ## Invariants
 
 - Never log a token, secret, cookie, or other credential. Log an ID to say who made a request.
@@ -161,6 +178,19 @@ Change these together: the tools in `src/mcp/tools/`, their tests in `test/mcp/`
 
 <!-- @starter:end -->
 
+<!-- @starter:d1 -->
+
+- Never apply migrations with `--remote` by hand, and never run `wrangler d1 delete` or
+  `wrangler d1 execute --remote` with a binding name inside the repository. Wrangler resolves a
+  binding name from the top-level `d1_databases`, so `DB` means production.
+- Migrations are additive: add tables and columns, and don't rename or drop one in the change that
+  stops using it. Every Preview shares one database, and a pull request's migration lands there
+  before it merges.
+- `PREVIEW_DB` exists only in `wrangler.preview-migrations.jsonc`, so a command that names it
+  without `--config` fails instead of reaching production.
+
+<!-- @starter:end -->
+
 <!-- @starter:web -->
 
 - `WEB_ACCESS` alone decides whether the web app is private. It has the same value in `vars` and
@@ -190,5 +220,11 @@ Topic guides:
 <!-- @starter:web -->
 
 - [docs/web.md](docs/web.md): the web app, identity, and the Cloudflare Access applications.
+
+<!-- @starter:end -->
+
+<!-- @starter:d1 -->
+
+- [docs/d1.md](docs/d1.md): the D1 databases, migrations, and the shared Previews database.
 
 <!-- @starter:end -->

@@ -1,6 +1,7 @@
 // Wrangler configuration for the Worker: its runtime flags, bindings, and vars. Blocks between
-// `@starter:mcp`, `@starter:oauth`, `@starter:web`, or `@starter:access` and `@starter:end` belong
-// to one part of the template, so a project that drops that part can delete them.
+// `@starter:mcp`, `@starter:oauth`, `@starter:web`, `@starter:access`, or `@starter:d1` and
+// `@starter:end` belong to one part of the template, so a project that drops that part can delete
+// them.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cloudflare-starter",
@@ -33,6 +34,18 @@
   // @starter:end
   // @starter:mcp
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_ID" }],
+  // @starter:end
+  // @starter:d1
+  // The production database. The deploy workflow applies `migrations/` to it before each deploy.
+  // docs/d1.md explains the databases and how migrations reach them.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cloudflare-starter-db",
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "migrations",
+    },
+  ],
   // @starter:end
   // @starter:oauth
   // From `.dev.vars`, Wrangler loads these keys and any key named after a var, and ignores the
@@ -87,6 +100,18 @@
     // @starter:mcp
     // A separate namespace keeps Preview data out of production.
     "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_PREVIEW_KV_ID" }],
+    // @starter:end
+    // @starter:d1
+    // Every Preview shares this database, never production's. The Preview workflow migrates it
+    // through `wrangler.preview-migrations.jsonc`, because Wrangler's migration commands don't read
+    // this block.
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "cloudflare-starter-db-preview",
+        "database_id": "REPLACE_WITH_PREVIEW_D1_ID",
+      },
+    ],
     // @starter:end
   },
   // @starter:access

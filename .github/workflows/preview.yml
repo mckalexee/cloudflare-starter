@@ -2,11 +2,19 @@
 # answers 200 with `{"ok":true}`, and comments its URL on the pull request. When Cloudflare Access
 # answers instead of the Worker, the check passes with a notice. Closing the pull request deletes
 # the Preview.
+# @starter:d1
+#
+# Before each deploy, the job applies the migrations in `migrations/` to the D1 database that every
+# Preview shares, through `wrangler.preview-migrations.jsonc`.
+# @starter:end
 #
 # Needs:
 # - Variable `DEPLOY_ENABLED` set to `true`. Until then both jobs are skipped.
 # - Secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, in the repository or in the
 #   `preview` environment.
+# @starter:d1
+#   The token needs D1 edit permission to apply the migrations.
+# @starter:end
 # @starter:oauth
 # - Optional secrets `PREVIEW_GITHUB_CLIENT_ID`, `PREVIEW_GITHUB_CLIENT_SECRET`, and
 #   `PREVIEW_COOKIE_SECRET`. The job passes each one that's set to the Preview as the Worker
@@ -81,6 +89,32 @@ jobs:
               printf '%s=%s\n' "$name" "${!name}" >> "$RUNNER_TEMP/preview.env"
             fi
           done
+      # @starter:end
+
+      # @starter:d1
+      # `wrangler d1 migrations apply` ignores `previews.d1_databases`, so the Previews database
+      # comes from its own config file. Every Preview shares that database, and nothing locks it
+      # between runs. When two pull requests carry the same new migration, both runs can try to
+      # apply it, and the second one fails. A retry then finds it applied, so the step tries up to
+      # three times. A concurrency group across pull requests would serialize the runs instead, but
+      # GitHub cancels a pending run when a newer one queues in the same group, which would cancel
+      # a pull request's Preview.
+      - name: Apply the D1 migrations to the Previews database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm exec wrangler d1 migrations apply PREVIEW_DB --remote \
+              --config wrangler.preview-migrations.jsonc; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep 10
+            fi
+          done
+          echo "::error title=Migrations failed::wrangler d1 migrations apply failed 3 times. docs/d1.md explains how to reset the Previews database."
+          exit 1
       # @starter:end
 
       - name: Deploy the Preview

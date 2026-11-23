@@ -47,6 +47,14 @@ reaches loaders and API routes.
 
 <!-- @starter:end -->
 
+<!-- @starter:d1 -->
+
+**D1.** A D1 database binding, with migrations that the workflows apply to production before each
+deploy and to a database that the Previews share before each Preview deploy. Each test file starts
+with a migrated local database.
+
+<!-- @starter:end -->
+
 **Tooling.** Hono serves `/healthz` and maps errors to responses. Tests run in workerd, the same
 runtime as production, with no network access. GitHub Actions run CI on every pull request, deploy
 a Worker Preview per pull request, and deploy to production on every push to `main`. Renovate
@@ -229,6 +237,13 @@ required, because `pnpm deploy` is a built-in pnpm command.
 
 - [docs/web.md](docs/web.md): the React Router app, identity in loaders, public mode, and the
   Cloudflare Access applications.
+
+<!-- @starter:end -->
+
+<!-- @starter:d1 -->
+
+- [docs/d1.md](docs/d1.md): the databases, migrations, local development, and the shared Previews
+  database.
 
 <!-- @starter:end -->
 
